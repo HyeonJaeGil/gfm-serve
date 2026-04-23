@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from io import BytesIO
@@ -10,7 +11,9 @@ from uuid import uuid4
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, ValidationError
 
+from .backends import BackendRunRequest, BackendRunResult, ReconstructionBackend
 from .config import Settings
 from .errors import (
     ApiError,
@@ -20,7 +23,6 @@ from .errors import (
     UnsupportedMediaApiError,
     ValidationApiError,
 )
-from .inference import EngineRunResult, VGGTInferenceEngine
 from .schemas import (
     ArtifactInfo,
     CameraResult,
@@ -48,8 +50,8 @@ def get_settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def get_engine(request: Request) -> VGGTInferenceEngine:
-    return request.app.state.engine
+def get_backend(request: Request) -> ReconstructionBackend:
+    return request.app.state.backend
 
 
 async def _prepare_uploads(
@@ -124,6 +126,7 @@ async def _prepare_uploads(
 def _artifact_to_response(request: Request, request_id: str, artifact: ArtifactDescriptor) -> ArtifactInfo:
     return ArtifactInfo(
         name=artifact.name,
+        kind=artifact.kind,
         url=str(request.url_for("download_artifact", request_id=request_id, name=artifact.name)),
         content_type=artifact.content_type,
         size_bytes=artifact.size_bytes,
@@ -132,6 +135,7 @@ def _artifact_to_response(request: Request, request_id: str, artifact: ArtifactD
 
 def _build_response(
     *,
+    backend_id: str,
     request_id: str,
     client_request_id: str | None,
     status_value: str,
@@ -139,9 +143,11 @@ def _build_response(
     timings_ms: TimingStats,
     camera_results: list[dict] | None = None,
     artifacts: list[ArtifactInfo] | None = None,
+    produced_outputs: list[str] | None = None,
     error: ErrorInfo | None = None,
 ) -> ReconstructionResponse:
     return ReconstructionResponse(
+        backend=backend_id,
         request_id=request_id,
         client_request_id=client_request_id,
         status=status_value,  # type: ignore[arg-type]
@@ -149,8 +155,41 @@ def _build_response(
         timings_ms=timings_ms,
         camera_results=[CameraResult.model_validate(item) for item in (camera_results or [])],
         artifacts=artifacts or [],
+        produced_outputs=produced_outputs or [],
         error=error,
     )
+
+
+def _parse_backend_options(
+    *,
+    backend: ReconstructionBackend,
+    backend_options_payload: str | None,
+    depth_conf_threshold: float | None,
+) -> BaseModel:
+    raw_options: dict[str, object]
+    if backend_options_payload is None:
+        raw_options = {}
+    else:
+        try:
+            parsed = json.loads(backend_options_payload)
+        except json.JSONDecodeError as exc:
+            raise ValidationApiError("backend_options must be valid JSON.") from exc
+        if not isinstance(parsed, dict):
+            raise ValidationApiError("backend_options must be a JSON object.")
+        raw_options = dict(parsed)
+
+    if depth_conf_threshold is not None:
+        if backend.backend_id != "vggt":
+            raise ValidationApiError(
+                f"depth_conf_threshold is only supported by the 'vggt' backend. Use backend_options for '{backend.backend_id}'."
+            )
+        raw_options.setdefault("depth_conf_threshold", depth_conf_threshold)
+
+    try:
+        return backend.validate_options(raw_options)
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"] if exc.errors() else "Invalid backend_options."
+        raise ValidationApiError(f"Invalid backend_options for '{backend.backend_id}': {message}") from exc
 
 
 @router.get("/healthz", response_model=HealthResponse)
@@ -160,13 +199,15 @@ async def healthz() -> HealthResponse:
 
 @router.get("/readyz", response_model=ReadyResponse)
 async def readyz(request: Request) -> JSONResponse:
-    engine = get_engine(request)
-    ready = engine.is_ready()
+    backend = get_backend(request)
+    ready = backend.is_ready()
     payload = ReadyResponse(
         status="ready" if ready else "not_ready",
         ready=ready,
-        device=engine.device_description,
-        error=engine.last_error,
+        backend=backend.backend_id,
+        capabilities=list(backend.capabilities),
+        device=backend.device_description,
+        error=backend.last_error,
     )
     status_code = status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(payload.model_dump(mode="json"), status_code=status_code)
@@ -194,33 +235,31 @@ async def create_reconstruction(
     scene_id: str | None = Form(default=None),
     client_request_id: str | None = Form(default=None),
     depth_conf_threshold: float | None = Form(default=None),
+    backend_options: str | None = Form(default=None),
 ) -> JSONResponse:
     settings = get_settings(request)
-    engine = get_engine(request)
+    backend = get_backend(request)
     request_id = uuid4().hex
     run_dir = settings.data_root / request_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    threshold = (
-        settings.default_depth_conf_threshold if depth_conf_threshold is None else float(depth_conf_threshold)
-    )
-    if threshold < 0:
-        error = ValidationApiError("depth_conf_threshold must be greater than or equal to 0.")
-    elif not engine.is_ready() and engine.last_error:
-        error = ServiceUnavailableApiError(engine.last_error)
+    if not backend.is_ready() and backend.last_error:
+        error = ServiceUnavailableApiError(backend.last_error)
     else:
         error = None
 
     start = perf_counter()
     prepared_images: list[PreparedImage] = []
     input_summary: InputSummary | None = None
+    validated_backend_options: BaseModel | None = None
     validation_ms = 0
 
     request_payload = {
         "request_id": request_id,
+        "backend": backend.backend_id,
         "scene_id": scene_id,
         "client_request_id": client_request_id,
-        "depth_conf_threshold": threshold,
+        "backend_options": None,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "filenames": [upload.filename for upload in images or []],
     }
@@ -230,6 +269,11 @@ async def create_reconstruction(
         if error is not None:
             raise error
 
+        validated_backend_options = _parse_backend_options(
+            backend=backend,
+            backend_options_payload=backend_options,
+            depth_conf_threshold=depth_conf_threshold,
+        )
         prepared_images, total_bytes = await _prepare_uploads(files=images, run_dir=run_dir, settings=settings)
         validation_ms = int((perf_counter() - start) * 1000)
         input_summary = InputSummary(
@@ -250,13 +294,16 @@ async def create_reconstruction(
             }
             for image in prepared_images
         ]
+        request_payload["backend_options"] = validated_backend_options.model_dump(mode="json")
         write_json(run_dir / "request.json", request_payload)
 
-        result: EngineRunResult = engine.run(
-            request_id=request_id,
-            run_dir=run_dir,
-            images=prepared_images,
-            depth_conf_threshold=threshold,
+        result: BackendRunResult = backend.run(
+            BackendRunRequest(
+                request_id=request_id,
+                run_dir=run_dir,
+                images=prepared_images,
+                backend_options=validated_backend_options,
+            )
         )
 
         result_json_artifact = run_dir / "result.json"
@@ -265,6 +312,7 @@ async def create_reconstruction(
             ArtifactDescriptor(
                 name=result_json_artifact.name,
                 path=result_json_artifact,
+                kind="result_manifest",
                 content_type="application/json",
                 size_bytes=0,
             )
@@ -272,6 +320,7 @@ async def create_reconstruction(
         artifacts = [_artifact_to_response(request, request_id, artifact) for artifact in artifact_descriptors]
 
         response_payload = _build_response(
+            backend_id=backend.backend_id,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="succeeded",
@@ -284,6 +333,7 @@ async def create_reconstruction(
             ),
             camera_results=result.camera_results,
             artifacts=artifacts,
+            produced_outputs=result.produced_outputs,
         )
         write_json(result_json_artifact, response_payload.model_dump(mode="json"))
 
@@ -297,10 +347,11 @@ async def create_reconstruction(
             "Request succeeded",
             extra={
                 "request_id": request_id,
+                "backend": backend.backend_id,
                 "scene_id": scene_id,
                 "status": "succeeded",
                 "image_count": len(prepared_images),
-                "device": engine.device_description,
+                "device": backend.device_description,
                 "timings_ms": response_payload.timings_ms.model_dump(mode="json"),
             },
         )
@@ -308,6 +359,7 @@ async def create_reconstruction(
 
     except ApiError as exc:
         response_payload = _build_response(
+            backend_id=backend.backend_id,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="failed",
@@ -323,6 +375,7 @@ async def create_reconstruction(
             "Request failed",
             extra={
                 "request_id": request_id,
+                "backend": backend.backend_id,
                 "scene_id": scene_id,
                 "status": "failed",
                 "code": exc.code,
@@ -333,6 +386,7 @@ async def create_reconstruction(
     except Exception as exc:  # pragma: no cover - protection for runtime failures
         api_error = ExecutionFailedApiError(str(exc))
         response_payload = _build_response(
+            backend_id=backend.backend_id,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="failed",
@@ -348,6 +402,7 @@ async def create_reconstruction(
             "Unhandled request failure",
             extra={
                 "request_id": request_id,
+                "backend": backend.backend_id,
                 "scene_id": scene_id,
                 "status": "failed",
                 "code": api_error.code,

@@ -1,6 +1,6 @@
 # VGGT Serve
 
-`vggt-serve` is a small FastAPI server for running VGGT on a set of RGB images and returning camera poses, depth, and a point cloud.
+`vggt-serve` is now structured as a backend-extensible reconstruction service. VGGT is the only implemented backend in this branch, and additional models can be added as isolated adapters plus their own Dockerfiles.
 
 ## Quick Start With Docker
 
@@ -25,16 +25,18 @@ git submodule update --init --recursive
 Choose a port. The same port is used inside the container and on the host.
 
 ```bash
-scripts/docker_compose.sh up --port 9000 -d
+scripts/docker_compose.sh up --backend vggt --port 9000 -d
 ```
 
 Useful variants:
 
 ```bash
-scripts/docker_compose.sh logs --port 9000
+scripts/docker_compose.sh logs --backend vggt --port 9000
 scripts/docker_compose.sh down
-scripts/docker_compose.sh up --port 9000 --cpu
+scripts/docker_compose.sh up --backend vggt --port 9000 --cpu
 ```
+
+The wrapper builds `docker/Dockerfile.common` first, then the selected backend-specific `docker/Dockerfile.<backend>`.
 
 Notes:
 
@@ -83,7 +85,7 @@ If the Docker container runs on a remote server, you can still use the client sc
 On the server:
 
 ```bash
-scripts/docker_compose.sh up --port 8080 -d
+scripts/docker_compose.sh up --backend vggt --port 8080 -d
 ```
 
 ### 2. Forward the port to your local machine
@@ -118,7 +120,7 @@ If you do not want Docker, you can run the service directly.
 
 ```bash
 conda env create -f environment.yml
-conda activate vggt-serve-py312
+conda activate recon-serve-py312
 python scripts/check_env.py
 uvicorn vggt_serve.app:app --host 0.0.0.0 --port 8000
 ```
@@ -147,7 +149,11 @@ Typical files:
 
 ## Docker Files
 
-- [Dockerfile](/mnt/Backup2nd/Research/vggt-server/Dockerfile): service image
-- [docker-compose.yml](/mnt/Backup2nd/Research/vggt-server/docker-compose.yml): base compose config
-- [docker-compose.gpu.yml](/mnt/Backup2nd/Research/vggt-server/docker-compose.gpu.yml): GPU overlay
-- [docker_compose.sh](/mnt/Backup2nd/Research/vggt-server/scripts/docker_compose.sh): simple wrapper script
+- [docker/Dockerfile.common](/mnt/Backup2nd/Research/vggt-serve/docker/Dockerfile.common): shared runtime base
+- [docker/Dockerfile.vggt](/mnt/Backup2nd/Research/vggt-serve/docker/Dockerfile.vggt): VGGT-specific layer
+- [docker/Dockerfile.map-anything](/mnt/Backup2nd/Research/vggt-serve/docker/Dockerfile.map-anything): placeholder image
+- [docker/Dockerfile.pi3](/mnt/Backup2nd/Research/vggt-serve/docker/Dockerfile.pi3): placeholder image
+- [docker/Dockerfile.depth-anything3](/mnt/Backup2nd/Research/vggt-serve/docker/Dockerfile.depth-anything3): placeholder image
+- [docker-compose.yml](/mnt/Backup2nd/Research/vggt-serve/docker-compose.yml): base compose config
+- [docker-compose.gpu.yml](/mnt/Backup2nd/Research/vggt-serve/docker-compose.gpu.yml): GPU overlay
+- [scripts/docker_compose.sh](/mnt/Backup2nd/Research/vggt-serve/scripts/docker_compose.sh): compose wrapper with `--backend`

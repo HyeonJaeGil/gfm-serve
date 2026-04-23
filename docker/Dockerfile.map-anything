@@ -1,0 +1,13 @@
+ARG COMMON_BASE_IMAGE=recon-serve-common:latest
+FROM ${COMMON_BASE_IMAGE}
+
+ENV RECON_SERVE_BACKEND=map-anything
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install --index-url https://download.pytorch.org/whl/cu121 \
+        torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 \
+    && python -m pip install "mapanything @ git+https://github.com/facebookresearch/map-anything.git@main"

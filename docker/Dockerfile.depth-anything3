@@ -1,0 +1,4 @@
+ARG COMMON_BASE_IMAGE=recon-serve-common:latest
+FROM ${COMMON_BASE_IMAGE}
+
+ENV RECON_SERVE_BACKEND=depth-anything3

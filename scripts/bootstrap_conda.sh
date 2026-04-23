@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_NAME="vggt-serve-py312"
+ENV_NAME="recon-serve-py312"
 
 cd "${ROOT_DIR}"
 
@@ -13,4 +13,3 @@ else
 fi
 
 conda run -n "${ENV_NAME}" python scripts/check_env.py
-

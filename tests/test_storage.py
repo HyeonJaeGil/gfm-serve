@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from vggt_serve.storage import remap_square_tensor_to_original, rescale_intrinsics_to_original, sample_point_cloud, write_point_cloud_ply
 
@@ -24,6 +25,8 @@ def test_rescale_intrinsics_to_original() -> None:
 
 
 def test_remap_square_tensor_to_original_shape() -> None:
+    pytest.importorskip("torch")
+
     square = np.ones((518, 518), dtype=np.float32)
     remapped = remap_square_tensor_to_original(square, width=320, height=160)
 

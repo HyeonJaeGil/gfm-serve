@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from vggt.utils.geometry import unproject_depth_map_to_point_map
+
+geometry = pytest.importorskip("vggt.utils.geometry")
+unproject_depth_map_to_point_map = geometry.unproject_depth_map_to_point_map
 
 
 def test_unproject_depth_map_accepts_service_shape() -> None:

@@ -1,4 +1,4 @@
-name: vggt-serve-py312
+name: recon-serve-py312
 channels:
   - pytorch
   - nvidia

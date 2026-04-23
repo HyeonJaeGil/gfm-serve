@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ImageSize(BaseModel):
@@ -33,6 +33,7 @@ class CameraResult(BaseModel):
 
 class ArtifactInfo(BaseModel):
     name: str
+    kind: str
     url: str
     content_type: str
     size_bytes: int
@@ -44,13 +45,15 @@ class ErrorInfo(BaseModel):
 
 
 class ReconstructionResponse(BaseModel):
+    backend: str
     request_id: str
     client_request_id: str | None = None
     status: Literal["succeeded", "failed"]
     input_summary: InputSummary | None = None
     timings_ms: TimingStats
-    camera_results: list[CameraResult] = []
-    artifacts: list[ArtifactInfo] = []
+    camera_results: list[CameraResult] = Field(default_factory=list)
+    artifacts: list[ArtifactInfo] = Field(default_factory=list)
+    produced_outputs: list[str] = Field(default_factory=list)
     error: ErrorInfo | None = None
 
 
@@ -61,6 +64,7 @@ class HealthResponse(BaseModel):
 class ReadyResponse(BaseModel):
     status: Literal["ready", "not_ready"]
     ready: bool
+    backend: str
+    capabilities: list[str] = Field(default_factory=list)
     device: str | None = None
     error: str | None = None
-

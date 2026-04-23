@@ -1,15 +1,18 @@
 services:
-  vggt-serve:
+  recon-serve:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: vggt-serve:latest
+      dockerfile: ${DOCKERFILE_PATH:-docker/Dockerfile.vggt}
+      args:
+        COMMON_BASE_IMAGE: ${RECON_COMMON_IMAGE:-recon-serve-common:latest}
+    image: ${SERVICE_IMAGE:-recon-serve:vggt}
     restart: unless-stopped
     environment:
-      VGGT_SERVE_HOST: 0.0.0.0
-      VGGT_SERVE_PORT: ${SERVICE_PORT:-8000}
-      VGGT_SERVE_MODEL_ID: ${VGGT_SERVE_MODEL_ID:-facebook/VGGT-1B}
-      VGGT_SERVE_DATA_ROOT: /app/data/runs
+      RECON_SERVE_HOST: 0.0.0.0
+      RECON_SERVE_PORT: ${SERVICE_PORT:-8000}
+      RECON_SERVE_BACKEND: ${RECON_BACKEND:-vggt}
+      RECON_SERVE_DATA_ROOT: /app/data/runs
+      RECON_SERVE_VGGT_MODEL_ID: ${RECON_SERVE_VGGT_MODEL_ID:-facebook/VGGT-1B}
       HF_HOME: /root/.cache/huggingface
       HUGGINGFACE_HUB_CACHE: /root/.cache/huggingface/hub
     ports:

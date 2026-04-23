@@ -8,8 +8,11 @@ GPU_ENABLED=1
 DETACH=0
 BUILD_ON_UP=1
 ACTION="up"
+BACKEND="${RECON_BACKEND:-vggt}"
 DOCKER_GPUS_VALUE="${DOCKER_GPUS:-all}"
 SHM_SIZE_VALUE="${SHM_SIZE:-8gb}"
+SERVICE_NAME="recon-serve"
+COMMON_IMAGE="${RECON_COMMON_IMAGE:-recon-serve-common:latest}"
 
 usage() {
   cat <<'EOF'
@@ -25,6 +28,8 @@ Actions:
 
 Options:
   -p, --port PORT     Forward this host/container port. Default: 8000
+  --backend ID        Backend id and Dockerfile suffix. Default: vggt
+  --common-image TAG  Shared base image tag. Default: recon-serve-common:latest
   --cpu               Use the base compose file only and skip GPU settings.
   --gpus VALUE        GPU selector passed to compose. Default: all
   --shm-size VALUE    Shared memory size for GPU compose. Default: 8gb
@@ -33,9 +38,9 @@ Options:
   -h, --help          Show this help text.
 
 Examples:
-  scripts/docker_compose.sh up --port 9000
-  scripts/docker_compose.sh up --port 9000 --cpu
-  scripts/docker_compose.sh logs --port 9000
+  scripts/docker_compose.sh up --backend vggt --port 9000
+  scripts/docker_compose.sh up --backend vggt --port 9000 --cpu
+  scripts/docker_compose.sh logs --backend vggt --port 9000
   scripts/docker_compose.sh down
 EOF
 }
@@ -52,6 +57,22 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       PORT="$2"
+      shift 2
+      ;;
+    --backend)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      BACKEND="$2"
+      shift 2
+      ;;
+    --common-image)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      COMMON_IMAGE="$2"
       shift 2
       ;;
     --cpu)
@@ -99,8 +120,14 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; th
   exit 1
 fi
 
-if [ ! -f "${ROOT_DIR}/.gitmodules" ] || [ ! -f "${ROOT_DIR}/vggt/pyproject.toml" ]; then
-  echo "VGGT submodule is missing. Run: git submodule update --init --recursive" >&2
+DOCKERFILE_PATH="docker/Dockerfile.${BACKEND}"
+if [ ! -f "${ROOT_DIR}/${DOCKERFILE_PATH}" ]; then
+  echo "Backend Dockerfile not found: ${DOCKERFILE_PATH}" >&2
+  exit 1
+fi
+
+if [ "$BACKEND" = "vggt" ] && { [ ! -f "${ROOT_DIR}/.gitmodules" ] || [ ! -f "${ROOT_DIR}/vggt/pyproject.toml" ]; }; then
+  echo "VGGT backend assets are missing. Run: git submodule update --init --recursive" >&2
   exit 1
 fi
 
@@ -110,13 +137,27 @@ if [ "$GPU_ENABLED" -eq 1 ]; then
 fi
 
 export SERVICE_PORT="$PORT"
+export RECON_BACKEND="$BACKEND"
+export RECON_COMMON_IMAGE="$COMMON_IMAGE"
+export DOCKERFILE_PATH
+export SERVICE_IMAGE="recon-serve:${BACKEND}"
 export DOCKER_GPUS="$DOCKER_GPUS_VALUE"
 export SHM_SIZE="$SHM_SIZE_VALUE"
 
 cd "$ROOT_DIR"
 
+build_common_base() {
+  docker build \
+    -f docker/Dockerfile.common \
+    -t "${COMMON_IMAGE}" \
+    .
+}
+
 case "$ACTION" in
   up)
+    if [ "$BUILD_ON_UP" -eq 1 ]; then
+      build_common_base
+    fi
     UP_ARGS=(up)
     if [ "$BUILD_ON_UP" -eq 1 ]; then
       UP_ARGS+=(--build)
@@ -130,10 +171,11 @@ case "$ACTION" in
     exec docker compose "${COMPOSE_ARGS[@]}" down
     ;;
   build)
+    build_common_base
     exec docker compose "${COMPOSE_ARGS[@]}" build
     ;;
   logs)
-    exec docker compose "${COMPOSE_ARGS[@]}" logs -f vggt-serve
+    exec docker compose "${COMPOSE_ARGS[@]}" logs -f "${SERVICE_NAME}"
     ;;
   ps)
     exec docker compose "${COMPOSE_ARGS[@]}" ps

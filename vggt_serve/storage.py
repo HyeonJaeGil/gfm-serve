@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import torch
-import torch.nn.functional as F
 
 
 _FILENAME_SANITIZER = re.compile(r"[^A-Za-z0-9._-]+")
@@ -28,6 +26,7 @@ class PreparedImage:
 class ArtifactDescriptor:
     name: str
     path: Path
+    kind: str
     content_type: str
     size_bytes: int
 
@@ -39,6 +38,9 @@ def sanitize_filename(filename: str | None, fallback: str) -> str:
 
 
 def remap_square_tensor_to_original(square_map: np.ndarray, width: int, height: int) -> np.ndarray:
+    import torch
+    import torch.nn.functional as F
+
     max_dim = max(width, height)
     left = (max_dim - width) // 2
     top = (max_dim - height) // 2
@@ -159,4 +161,3 @@ def write_point_cloud_ply(path: Path, points: np.ndarray, colors: np.ndarray) ->
     with path.open("wb") as handle:
         handle.write(header.encode("ascii"))
         vertices.tofile(handle)
-

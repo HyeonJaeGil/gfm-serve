@@ -9,7 +9,7 @@ import httpx
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Test client for the VGGT reconstruction service.")
+    parser = argparse.ArgumentParser(description="Test client for the reconstruction service.")
     parser.add_argument(
         "images",
         nargs="+",
@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-url",
         default="http://127.0.0.1:8000",
-        help="Base URL of the running vggt-serve instance.",
+        help="Base URL of the running server.",
     )
     parser.add_argument(
         "--scene-id",
@@ -33,8 +33,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--depth-conf-threshold",
         type=float,
-        default=5.0,
-        help="Depth confidence threshold used by the service.",
+        default=None,
+        help="VGGT compatibility field. Avoid this for non-VGGT backends.",
+    )
+    parser.add_argument(
+        "--backend-options-json",
+        default=None,
+        help="Optional JSON object passed as backend_options.",
     )
     parser.add_argument(
         "--download-dir",
@@ -104,12 +109,15 @@ def main() -> int:
 
     files = build_files(image_paths)
     data = {
-        "depth_conf_threshold": str(args.depth_conf_threshold),
     }
     if args.scene_id is not None:
         data["scene_id"] = args.scene_id
     if args.client_request_id is not None:
         data["client_request_id"] = args.client_request_id
+    if args.depth_conf_threshold is not None:
+        data["depth_conf_threshold"] = str(args.depth_conf_threshold)
+    if args.backend_options_json is not None:
+        data["backend_options"] = args.backend_options_json
 
     url = f"{args.base_url.rstrip('/')}/v1/reconstructions"
     try:

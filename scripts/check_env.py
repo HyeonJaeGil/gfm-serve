@@ -5,9 +5,6 @@ import sys
 
 
 MODULES = [
-    "torch",
-    "torchvision",
-    "huggingface_hub",
     "fastapi",
     "uvicorn",
     "pydantic_settings",
@@ -27,22 +24,7 @@ def main() -> int:
             failed = True
             print(f"{module_name}: FAIL {type(exc).__name__}: {exc}")
 
-    try:
-        import torch
-
-        print(f"cuda_available: {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            device_name = torch.cuda.get_device_name(0)
-            capability = torch.cuda.get_device_capability(0)
-            print(f"cuda_device_0: {device_name} cc={capability}")
-    except Exception as exc:  # pragma: no cover - explicit smoke path
-        failed = True
-        print(f"torch_cuda_check: FAIL {type(exc).__name__}: {exc}")
-
-    for import_stmt in (
-        "from vggt.utils.load_fn import load_and_preprocess_images_square",
-        "from vggt_serve.app import create_app",
-    ):
+    for import_stmt in ("from vggt_serve.app import create_app",):
         try:
             exec(import_stmt, {})
             print(f"{import_stmt}: OK")
@@ -50,9 +32,20 @@ def main() -> int:
             failed = True
             print(f"{import_stmt}: FAIL {type(exc).__name__}: {exc}")
 
+    try:
+        import torch
+
+        print(f"torch: OK {getattr(torch, '__version__', 'unknown')}")
+        print(f"cuda_available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            device_name = torch.cuda.get_device_name(0)
+            capability = torch.cuda.get_device_capability(0)
+            print(f"cuda_device_0: {device_name} cc={capability}")
+    except Exception as exc:  # pragma: no cover - explicit smoke path
+        print(f"torch: SKIP {type(exc).__name__}: {exc}")
+
     return 1 if failed else 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

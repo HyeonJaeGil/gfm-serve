@@ -11,7 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bzip2 \
     ca-certificates \
     curl \
-    git \
     tini \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,7 +23,6 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY scripts ./scripts
-COPY vggt ./vggt
 COPY vggt_serve ./vggt_serve
 
 RUN conda create -y -n recon-serve-py312 python=3.12 pip setuptools wheel \
@@ -36,13 +34,10 @@ ENV CONDA_DEFAULT_ENV=recon-serve-py312 \
     PIP_NO_CACHE_DIR=1 \
     RECON_SERVE_HOST=0.0.0.0 \
     RECON_SERVE_PORT=8000 \
-    RECON_SERVE_BACKEND=vggt \
     RECON_SERVE_DATA_ROOT=/app/data/runs
 
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install --index-url https://download.pytorch.org/whl/cu121 \
-        torch==2.3.1 torchvision==0.18.1 \
-    && python -m pip install ./vggt .
+    && python -m pip install .
 
 RUN chmod +x /app/scripts/docker-entrypoint.sh \
     && mkdir -p /app/data/runs
