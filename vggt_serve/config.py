@@ -74,7 +74,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RECON_SERVE_VGGT_SQUARE_IMAGE_SIZE", "VGGT_SERVE_SQUARE_IMAGE_SIZE"),
     )
     vggt_default_depth_conf_threshold: float = Field(
-        default=5.0,
+        default=1.0,
         validation_alias=AliasChoices(
             "RECON_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD",
             "VGGT_SERVE_DEFAULT_DEPTH_CONF_THRESHOLD",

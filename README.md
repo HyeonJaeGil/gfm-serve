@@ -34,6 +34,9 @@ Useful variants:
 scripts/docker_compose.sh logs --backend vggt --port 9000
 scripts/docker_compose.sh down
 scripts/docker_compose.sh up --backend vggt --port 9000 --cpu
+RECON_SERVE_MAX_IMAGES=32 \
+RECON_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD=1.0 \
+scripts/docker_compose.sh up --backend vggt --port 9000 -d
 ```
 
 The wrapper builds `docker/Dockerfile.common` first, then the selected backend-specific `docker/Dockerfile.<backend>`.
@@ -63,6 +66,15 @@ python scripts/client_example.py \
   vggt/examples/kitchen/images/01.png \
   --base-url http://127.0.0.1:9000 \
   --scene-id kitchen-demo \
+  --download-dir ./client_outputs
+
+# For sparse or difficult sequences, lower the confidence cutoff if the
+# returned point_cloud.ply is empty.
+python scripts/client_example.py \
+  /path/to/image_01.png \
+  /path/to/image_02.png \
+  --base-url http://127.0.0.1:9000 \
+  --depth-conf-threshold 1.0 \
   --download-dir ./client_outputs
 ```
 

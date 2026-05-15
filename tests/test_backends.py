@@ -32,3 +32,9 @@ def test_vggt_backend_options_reject_unknown_keys(tmp_path) -> None:
 
 def test_list_backends_includes_vggt() -> None:
     assert "vggt" in list_backends()
+
+
+def test_vggt_default_depth_conf_threshold_is_low_enough_for_sparse_sequences(tmp_path) -> None:
+    settings = Settings(data_root=tmp_path / "runs")
+
+    assert settings.vggt_default_depth_conf_threshold == 1.0
