@@ -22,6 +22,10 @@ OpenCV cameras and a point cloud when the selected variant produces both
 extrinsics and intrinsics. Camera sources are marked `predicted`, `provided`,
 or `aligned`.
 
+The production image pins PyTorch `2.4.1`/Torchvision `0.19.1` with CUDA 12.1
+and xFormers `0.0.28`. It installs only DA3 inference dependencies; upstream
+CLI, COLMAP, Open3D UI, and development-only packages are intentionally omitted.
+
 ## Configuration
 
 - `GFM_SERVE_DEPTH_ANYTHING_3_MODEL_ID`
