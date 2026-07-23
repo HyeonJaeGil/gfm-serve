@@ -28,7 +28,6 @@ from .schemas import (
     ErrorInfo,
     HealthResponse,
     InputSummary,
-    LegacyCameraResult,
     ReadyResponse,
     ReconstructionResponse,
     TimingStats,
@@ -160,18 +159,6 @@ def _build_response(
         input_summary=input_summary,
         timings_ms=timings_ms,
         view_results=view_results or [],
-        camera_results=[
-            LegacyCameraResult(
-                filename=result.filename,
-                original_size=result.original_size,
-                cam_from_world=[list(row) for row in result.camera.world_to_camera],
-                intrinsics=[list(row) for row in result.camera.intrinsics],
-            )
-            for result in (view_results or [])
-            if result.camera is not None
-            and result.camera.world_to_camera is not None
-            and result.camera.intrinsics is not None
-        ],
         artifacts=artifacts or [],
         produced_outputs=produced_outputs or [],
         normalized_request=normalized_request,
@@ -185,17 +172,7 @@ def _parse_backend_options(
     backend: ReconstructionBackend,
     scene,
     raw_options: dict[str, object],
-    depth_conf_threshold: float | None,
 ) -> BaseModel:
-    raw_options = dict(raw_options)
-
-    if depth_conf_threshold is not None:
-        if backend.backend_id != "vggt":
-            raise ValidationApiError(
-                f"depth_conf_threshold is only supported by the 'vggt' backend. Use backend_options for '{backend.backend_id}'."
-            )
-        raw_options.setdefault("depth_conf_threshold", depth_conf_threshold)
-
     try:
         return backend.validate_request(scene, raw_options)
     except (ValidationError, ValueError) as exc:
@@ -298,7 +275,6 @@ async def create_reconstruction(
             backend=backend,
             scene=parsed_request.scene,
             raw_options=parsed_request.raw_options,
-            depth_conf_threshold=parsed_request.compatibility_threshold,
         )
         prepared_images, total_bytes = await _prepare_uploads(
             files=parsed_request.uploads, run_dir=run_dir, settings=settings
@@ -379,12 +355,7 @@ async def create_reconstruction(
                 "scene": parsed_request.scene.model_dump(mode="json"),
                 "options": validated_backend_options.model_dump(mode="json"),
             },
-            warnings=result.warnings
-            + (
-                ["depth_conf_threshold was translated to VGGT backend options."]
-                if parsed_request.compatibility_threshold is not None
-                else []
-            ),
+            warnings=result.warnings,
         )
         write_json(result_json_artifact, response_payload.model_dump(mode="json"))
 
@@ -406,12 +377,8 @@ async def create_reconstruction(
                 "timings_ms": response_payload.timings_ms.model_dump(mode="json"),
             },
         )
-        headers = {}
-        if parsed_request.compatibility_threshold is not None:
-            headers["Deprecation"] = "true"
-            headers["Warning"] = '299 - "depth_conf_threshold is deprecated; use manifest.options"'
         return JSONResponse(
-            response_payload.model_dump(mode="json"), status_code=status.HTTP_200_OK, headers=headers
+            response_payload.model_dump(mode="json"), status_code=status.HTTP_200_OK
         )
 
     except ApiError as exc:

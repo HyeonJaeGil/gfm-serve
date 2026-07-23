@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -8,7 +7,7 @@ from fastapi import Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.datastructures import UploadFile
 
-from .contracts import SceneInput, ViewInput
+from .contracts import SceneInput
 from .errors import ValidationApiError
 
 
@@ -22,11 +21,8 @@ class ReconstructionManifest(SceneInput):
 class ParsedMultipartRequest:
     scene: SceneInput
     uploads: list[UploadFile]
-    upload_keys: list[str]
     raw_options: dict[str, Any]
     client_request_id: str | None
-    compatibility_threshold: float | None
-    legacy: bool
 
 
 def _optional_string(form: Any, key: str) -> str | None:
@@ -38,60 +34,24 @@ def _optional_string(form: Any, key: str) -> str | None:
     return value
 
 
-def _parse_json_object(value: str | None, field_name: str) -> dict[str, Any]:
-    if value is None:
-        return {}
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise ValidationApiError(f"{field_name} must be valid JSON.") from exc
-    if not isinstance(parsed, dict):
-        raise ValidationApiError(f"{field_name} must be a JSON object.")
-    return parsed
-
-
 async def parse_reconstruction_multipart(request: Request) -> ParsedMultipartRequest:
     form = await request.form()
     file_items = [(key, value) for key, value in form.multi_items() if isinstance(value, UploadFile)]
     manifest_payload = _optional_string(form, "manifest")
-    legacy_uploads = [(key, upload) for key, upload in file_items if key == "images"]
-
-    if manifest_payload is not None and legacy_uploads:
-        raise ValidationApiError("Do not mix manifest uploads with legacy repeated 'images' fields.")
-
-    backend_options = _parse_json_object(_optional_string(form, "backend_options"), "backend_options")
     client_request_id = _optional_string(form, "client_request_id")
-    threshold_text = _optional_string(form, "depth_conf_threshold")
-    try:
-        compatibility_threshold = float(threshold_text) if threshold_text is not None else None
-    except ValueError as exc:
-        raise ValidationApiError("depth_conf_threshold must be a number.") from exc
-
     if manifest_payload is None:
-        non_legacy_files = [key for key, _ in file_items if key != "images"]
-        if non_legacy_files:
-            raise ValidationApiError("File parts other than 'images' require a manifest.")
-        scene_id = _optional_string(form, "scene_id")
-        views = [
-            ViewInput(view_id=f"view-{index:03d}", upload_key=f"images-{index:03d}")
-            for index, _ in enumerate(legacy_uploads)
-        ]
-        if not views:
-            raise ValidationApiError("At least one image is required.")
-        return ParsedMultipartRequest(
-            scene=SceneInput(scene_id=scene_id, views=views),
-            uploads=[upload for _, upload in legacy_uploads],
-            upload_keys=[view.upload_key for view in views],
-            raw_options=backend_options,
-            client_request_id=client_request_id,
-            compatibility_threshold=compatibility_threshold,
-            legacy=True,
-        )
+        raise ValidationApiError("A manifest form field is required.")
 
-    if _optional_string(form, "scene_id") is not None:
-        raise ValidationApiError("scene_id belongs in the manifest when manifest is used.")
-    if backend_options:
-        raise ValidationApiError("Use manifest.options instead of backend_options with a manifest request.")
+    text_keys = {
+        key
+        for key, value in form.multi_items()
+        if not isinstance(value, UploadFile)
+    }
+    unexpected_text_keys = sorted(text_keys - {"manifest", "client_request_id"})
+    if unexpected_text_keys:
+        raise ValidationApiError(
+            f"Unexpected form fields: {', '.join(unexpected_text_keys)}."
+        )
 
     try:
         manifest = ReconstructionManifest.model_validate_json(manifest_payload)
@@ -117,9 +77,6 @@ async def parse_reconstruction_multipart(request: Request) -> ParsedMultipartReq
     return ParsedMultipartRequest(
         scene=scene,
         uploads=[uploads_by_key[key] for key in expected],
-        upload_keys=expected,
         raw_options=manifest.options,
         client_request_id=client_request_id,
-        compatibility_threshold=compatibility_threshold,
-        legacy=False,
     )

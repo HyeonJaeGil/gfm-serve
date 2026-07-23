@@ -31,14 +31,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional client request identifier to send with the request.",
     )
     parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Use the deprecated repeated-images v1 transport.",
-    )
-    parser.add_argument(
-        "--backend-options-json",
+        "--options-json",
         default=None,
-        help="Optional JSON object passed as backend_options.",
+        help="Optional JSON object passed as manifest options.",
     )
     parser.add_argument(
         "--download-dir",
@@ -65,13 +60,13 @@ def guess_content_type(path: Path) -> str:
 
 
 def build_files(
-    image_paths: Iterable[Path], *, legacy: bool
+    image_paths: Iterable[Path],
 ) -> list[tuple[str, tuple[str, object, str]]]:
     files: list[tuple[str, tuple[str, object, str]]] = []
     for image_path in image_paths:
         files.append(
             (
-                "images" if legacy else f"image_{len(files):03d}",
+                f"image_{len(files):03d}",
                 (
                     image_path.name,
                     image_path.open("rb"),
@@ -108,18 +103,12 @@ def main() -> int:
         if not image_path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-    files = build_files(image_paths, legacy=args.legacy)
-    options = json.loads(args.backend_options_json) if args.backend_options_json else {}
+    files = build_files(image_paths)
+    options = json.loads(args.options_json) if args.options_json else {}
     if not isinstance(options, dict):
-        raise ValueError("--backend-options-json must contain a JSON object.")
-    data = {}
-    if args.legacy:
-        if args.scene_id is not None:
-            data["scene_id"] = args.scene_id
-        if options:
-            data["backend_options"] = json.dumps(options)
-    else:
-        data["manifest"] = json.dumps(
+        raise ValueError("--options-json must contain a JSON object.")
+    data = {
+        "manifest": json.dumps(
             {
                 "scene_id": args.scene_id,
                 "views": [
@@ -129,6 +118,7 @@ def main() -> int:
                 "options": options,
             }
         )
+    }
     if args.client_request_id is not None:
         data["client_request_id"] = args.client_request_id
 

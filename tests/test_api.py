@@ -27,6 +27,24 @@ def _image_bytes(size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
     return buffer.getvalue()
 
 
+def _manifest(
+    upload_keys: list[str],
+    *,
+    scene_id: str | None = None,
+    options: dict[str, object] | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "scene_id": scene_id,
+            "views": [
+                {"view_id": f"view-{index:03d}", "upload_key": upload_key}
+                for index, upload_key in enumerate(upload_keys)
+            ],
+            "options": options or {},
+        }
+    )
+
+
 class StubVGGTOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -206,13 +224,16 @@ def test_reconstruction_success(tmp_path: Path) -> None:
     response = client.post(
         "/v1/reconstructions",
         files=[
-            ("images", ("image_a.png", _image_bytes((12, 8), (255, 0, 0)), "image/png")),
-            ("images", ("image_b.png", _image_bytes((8, 12), (0, 255, 0)), "image/png")),
+            ("image_a", ("image_a.png", _image_bytes((12, 8), (255, 0, 0)), "image/png")),
+            ("image_b", ("image_b.png", _image_bytes((8, 12), (0, 255, 0)), "image/png")),
         ],
         data={
-            "scene_id": "scene-1",
+            "manifest": _manifest(
+                ["image_a", "image_b"],
+                scene_id="scene-1",
+                options={"depth_conf_threshold": 4.0},
+            ),
             "client_request_id": "client-123",
-            "depth_conf_threshold": "4.0",
         },
     )
 
@@ -225,20 +246,11 @@ def test_reconstruction_success(tmp_path: Path) -> None:
     assert payload["status"] == "succeeded"
     assert payload["request_id"]
     assert payload["client_request_id"] == "client-123"
-    assert response.headers["deprecation"] == "true"
     assert payload["input_summary"]["image_count"] == 2
     assert payload["normalized_request"]["scene"]["scene_id"] == "scene-1"
-    assert payload["warnings"] == [
-        "depth_conf_threshold was translated to VGGT backend options."
-    ]
-    assert len(payload["camera_results"]) == 2
-    assert set(payload["camera_results"][0]) == {
-        "filename",
-        "original_size",
-        "cam_from_world",
-        "intrinsics",
-    }
-    assert payload["camera_results"][0]["cam_from_world"] == np.eye(4).tolist()
+    assert payload["warnings"] == []
+    assert len(payload["view_results"]) == 2
+    assert payload["view_results"][0]["camera"]["world_to_camera"] == np.eye(4).tolist()
     assert payload["produced_outputs"] == ["camera_poses", "depth", "depth_confidence", "point_cloud"]
     assert [(artifact["name"], artifact["kind"]) for artifact in payload["artifacts"]] == [
         ("depth.npz", "depth_archive"),
@@ -267,7 +279,8 @@ def test_reconstruction_rejects_corrupt_image(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("broken.png", b"not-a-real-image", "image/png"))],
+        files=[("image", ("broken.png", b"not-a-real-image", "image/png"))],
+        data={"manifest": _manifest(["image"])},
     )
 
     assert response.status_code == 400
@@ -280,7 +293,8 @@ def test_reconstruction_rejects_unsupported_media(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("notes.txt", b"text", "text/plain"))],
+        files=[("image", ("notes.txt", b"text", "text/plain"))],
+        data={"manifest": _manifest(["image"])},
     )
 
     assert response.status_code == 415
@@ -291,36 +305,46 @@ def test_reconstruction_returns_busy(tmp_path: Path) -> None:
     client = _make_client(tmp_path, backend=StubBackend(busy=True))
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        files=[("image", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        data={"manifest": _manifest(["image"])},
     )
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "service_busy"
 
 
-def test_non_vggt_backend_rejects_compat_threshold_field(tmp_path: Path) -> None:
-    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3", capabilities=("depth",)))
+def test_unexpected_form_field_is_rejected(tmp_path: Path) -> None:
+    client = _make_client(
+        tmp_path,
+        backend=StubBackend(backend_id="depth-anything-3", capabilities=("depth",)),
+    )
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
-        data={"depth_conf_threshold": "2.0"},
+        files=[("image", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        data={
+            "manifest": _manifest(["image"]),
+            "depth_conf_threshold": "2.0",
+        },
     )
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "validation_error"
 
 
-def test_depth_only_backend_returns_empty_camera_results(tmp_path: Path) -> None:
-    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3", capabilities=("depth",)))
+def test_depth_only_backend_returns_view_results(tmp_path: Path) -> None:
+    client = _make_client(
+        tmp_path,
+        backend=StubBackend(backend_id="depth-anything-3", capabilities=("depth",)),
+    )
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        files=[("image", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        data={"manifest": _manifest(["image"])},
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["backend"] == "depth-anything3"
-    assert payload["camera_results"] == []
+    assert payload["backend"] == "depth-anything-3"
     assert len(payload["view_results"]) == 1
     assert payload["produced_outputs"] == ["depth"]
     assert [(artifact["name"], artifact["kind"]) for artifact in payload["artifacts"]] == [
@@ -329,12 +353,19 @@ def test_depth_only_backend_returns_empty_camera_results(tmp_path: Path) -> None
     ]
 
 
-def test_backend_options_must_be_json_object(tmp_path: Path) -> None:
+def test_manifest_options_must_be_json_object(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
-        data={"backend_options": '["not-an-object"]'},
+        files=[("image", ("image.png", _image_bytes((10, 10), (0, 0, 255)), "image/png"))],
+        data={
+            "manifest": json.dumps(
+                {
+                    "views": [{"view_id": "one", "upload_key": "image"}],
+                    "options": ["not-an-object"],
+                }
+            )
+        },
     )
 
     assert response.status_code == 400
@@ -342,7 +373,7 @@ def test_backend_options_must_be_json_object(tmp_path: Path) -> None:
 
 
 def test_manifest_request_associates_uploads_by_key(tmp_path: Path) -> None:
-    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3"))
+    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything-3"))
     manifest = {
         "scene_id": "office",
         "views": [
@@ -395,17 +426,15 @@ def test_manifest_rejects_missing_and_extra_file_parts(tmp_path: Path) -> None:
     assert "Unexpected multipart" in extra.json()["error"]["message"]
 
 
-def test_manifest_rejects_legacy_images_mixed_in(tmp_path: Path) -> None:
+def test_manifest_is_required(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
-    manifest = {"views": [{"view_id": "one", "upload_key": "expected"}], "options": {}}
     response = client.post(
         "/v1/reconstructions",
-        files=[("images", ("legacy.png", _image_bytes((4, 4), (0, 0, 0)), "image/png"))],
-        data={"manifest": json.dumps(manifest)},
+        files=[("image", ("image.png", _image_bytes((4, 4), (0, 0, 0)), "image/png"))],
     )
 
     assert response.status_code == 400
-    assert "Do not mix" in response.json()["error"]["message"]
+    assert "manifest form field is required" in response.json()["error"]["message"]
 
 
 def test_current_model_exposes_descriptor_and_options_schema(tmp_path: Path) -> None:
@@ -421,7 +450,7 @@ def test_current_model_exposes_descriptor_and_options_schema(tmp_path: Path) -> 
 
 
 def test_manifest_rejects_invalid_camera_matrix(tmp_path: Path) -> None:
-    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3"))
+    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything-3"))
     manifest = {
         "views": [
             {
