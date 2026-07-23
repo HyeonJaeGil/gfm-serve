@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,31 +9,19 @@ class DA3BackendSettings(BaseSettings):
 
     model_id: str = Field(
         default="depth-anything/DA3NESTED-GIANT-LARGE",
-        validation_alias=AliasChoices(
-            "GFM_SERVE_DEPTH_ANYTHING_3_MODEL_ID",
-            "RECON_SERVE_DEPTH_ANYTHING_3_MODEL_ID",
-        ),
+        validation_alias="GFM_SERVE_DEPTH_ANYTHING_3_MODEL_ID",
     )
     model_revision: str = Field(
         default="main",
-        validation_alias=AliasChoices(
-            "GFM_SERVE_DEPTH_ANYTHING_3_MODEL_REVISION",
-            "RECON_SERVE_DEPTH_ANYTHING_3_MODEL_REVISION",
-        ),
+        validation_alias="GFM_SERVE_DEPTH_ANYTHING_3_MODEL_REVISION",
     )
     device: str = Field(
         default="auto",
-        validation_alias=AliasChoices(
-            "GFM_SERVE_DEPTH_ANYTHING_3_DEVICE",
-            "RECON_SERVE_DEPTH_ANYTHING_3_DEVICE",
-        ),
+        validation_alias="GFM_SERVE_DEPTH_ANYTHING_3_DEVICE",
     )
     max_point_cloud_points: int = Field(
         default=500_000,
-        validation_alias=AliasChoices(
-            "GFM_SERVE_DEPTH_ANYTHING_3_MAX_POINT_CLOUD_POINTS",
-            "RECON_SERVE_DEPTH_ANYTHING_3_MAX_POINT_CLOUD_POINTS",
-        ),
+        validation_alias="GFM_SERVE_DEPTH_ANYTHING_3_MAX_POINT_CLOUD_POINTS",
     )
 
     @property

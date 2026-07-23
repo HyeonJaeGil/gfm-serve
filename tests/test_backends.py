@@ -50,22 +50,12 @@ def test_default_max_images_is_32(tmp_path) -> None:
     assert settings.max_images == 32
 
 
-def test_gfm_environment_names_take_precedence(monkeypatch, tmp_path) -> None:
+def test_gfm_environment_names_are_loaded(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("GFM_SERVE_DATA_ROOT", str(tmp_path / "gfm"))
-    monkeypatch.setenv("RECON_SERVE_DATA_ROOT", str(tmp_path / "recon"))
     monkeypatch.setenv("GFM_SERVE_VGGT_MODEL_ID", "new/model")
-    monkeypatch.setenv("RECON_SERVE_VGGT_MODEL_ID", "old/model")
 
     assert Settings().data_root == tmp_path / "gfm"
     assert VGGTBackendSettings().model_id == "new/model"
-
-
-def test_legacy_environment_names_remain_supported(monkeypatch, tmp_path) -> None:
-    monkeypatch.setenv("RECON_SERVE_DATA_ROOT", str(tmp_path / "legacy"))
-    monkeypatch.setenv("RECON_SERVE_VGGT_MODEL_ID", "legacy/model")
-
-    assert Settings().data_root == tmp_path / "legacy"
-    assert VGGTBackendSettings().model_id == "legacy/model"
 
 
 def test_backend_selection_is_required_when_multiple_are_installed(monkeypatch, tmp_path) -> None:
