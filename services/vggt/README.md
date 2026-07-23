@@ -25,7 +25,7 @@ scripts/docker_compose.sh build --backend vggt
 scripts/docker_compose.sh up --backend vggt --bind-address 127.0.0.1
 python scripts/client_example.py \
   services/vggt/upstream/examples/kitchen/images/00.png \
-  --backend-options-json '{"depth_conf_threshold": 1.0}'
+  --options-json '{"depth_conf_threshold": 1.0}'
 ```
 
 For application code, install `packages/gfm-serve-client` and use

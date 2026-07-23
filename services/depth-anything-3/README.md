@@ -33,9 +33,6 @@ CLI, COLMAP, Open3D UI, and development-only packages are intentionally omitted.
 - `GFM_SERVE_DEPTH_ANYTHING_3_DEVICE` (`auto`, `cpu`, or `cuda`)
 - `GFM_SERVE_DEPTH_ANYTHING_3_MAX_POINT_CLOUD_POINTS`
 
-Legacy `RECON_SERVE_DEPTH_ANYTHING_3_*` names remain aliases during the v1
-migration window.
-
 ## Build and run
 
 ```bash

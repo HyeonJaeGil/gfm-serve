@@ -84,8 +84,8 @@ curl -X POST http://127.0.0.1:9000/v1/reconstructions \
 ```
 
 File order is irrelevant; `upload_key` determines view order. View IDs and
-upload keys must be unique. Extra, missing, duplicated, mixed legacy/manifest,
-non-image, empty, corrupt, and oversized file parts are rejected.
+upload keys must be unique. Extra, missing, duplicated, non-image, empty,
+corrupt, and oversized file parts are rejected.
 
 Camera rules:
 

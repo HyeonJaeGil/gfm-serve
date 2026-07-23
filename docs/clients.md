@@ -9,7 +9,6 @@ for shell scripts and other languages.
 | VGGT Python example | [`examples/vggt_client.py`](../examples/vggt_client.py) |
 | DA3 Python example | [`examples/depth_anything_3_client.py`](../examples/depth_anything_3_client.py) |
 | `curl` or another language | [HTTP API and curl examples](api.md) |
-| Legacy request migration | [v1 migration guide](migration-v1.md) |
 
 The Python SDK provides `VGGTClient`, `DepthAnything3Client`, camera validation,
 typed results, and artifact downloads. The HTTP API exposes the same features
