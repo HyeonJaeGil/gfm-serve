@@ -10,12 +10,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-from vggt_serve.app import create_app
-from vggt_serve.backends import BackendRunRequest, BackendRunResult, EmptyBackendOptions, ReconstructionBackend
-from vggt_serve.config import Settings
-from vggt_serve.contracts import BackendDescriptor, CameraResult, ImageSize, SceneInput, ViewResult
-from vggt_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
-from vggt_serve.storage import ArtifactDescriptor, PreparedImage, write_depth_artifact, write_point_cloud_ply
+from gfm_serve.app import create_app
+from gfm_serve.backends import BackendRunRequest, BackendRunResult, EmptyBackendOptions, ReconstructionBackend
+from gfm_serve.config import Settings
+from gfm_serve.contracts import BackendDescriptor, CameraResult, ImageSize, SceneInput, ViewResult
+from gfm_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
+from gfm_serve.storage import ArtifactDescriptor, PreparedImage, write_depth_artifact, write_point_cloud_ply
 
 
 def _image_bytes(size: tuple[int, int], color: tuple[int, int, int]) -> bytes:

@@ -1,26 +1,26 @@
 services:
-  recon-serve:
+  gfm-serve:
     build:
       context: .
-      dockerfile: ${DOCKERFILE_PATH:-docker/Dockerfile.vggt}
+      dockerfile: ${DOCKERFILE_PATH:-services/vggt/Dockerfile}
       args:
-        COMMON_BASE_IMAGE: ${RECON_COMMON_IMAGE:-recon-serve-common:latest}
-    image: ${SERVICE_IMAGE:-recon-serve:vggt}
+        COMMON_BASE_IMAGE: ${GFM_COMMON_IMAGE:-gfm-serve-core:latest}
+    image: ${SERVICE_IMAGE:-gfm-serve:vggt}
     restart: unless-stopped
     environment:
-      RECON_SERVE_HOST: 0.0.0.0
-      RECON_SERVE_PORT: ${SERVICE_PORT:-8000}
-      RECON_SERVE_BACKEND: ${RECON_BACKEND:-vggt}
-      RECON_SERVE_DATA_ROOT: /app/data/runs
-      RECON_SERVE_MAX_IMAGES: ${RECON_SERVE_MAX_IMAGES:-32}
-      RECON_SERVE_VGGT_MODEL_ID: ${RECON_SERVE_VGGT_MODEL_ID:-facebook/VGGT-1B}
-      RECON_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD: ${RECON_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD:-1.0}
+      GFM_SERVE_HOST: 0.0.0.0
+      GFM_SERVE_PORT: ${SERVICE_PORT:-8000}
+      GFM_SERVE_BACKEND: ${GFM_BACKEND:-vggt}
+      GFM_SERVE_DATA_ROOT: /app/data/runs
+      GFM_SERVE_MAX_IMAGES: ${GFM_SERVE_MAX_IMAGES:-32}
+      GFM_SERVE_VGGT_MODEL_ID: ${GFM_SERVE_VGGT_MODEL_ID:-facebook/VGGT-1B}
+      GFM_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD: ${GFM_SERVE_VGGT_DEFAULT_DEPTH_CONF_THRESHOLD:-1.0}
       HF_HOME: /root/.cache/huggingface
       HUGGINGFACE_HUB_CACHE: /root/.cache/huggingface/hub
     ports:
       # Bind to one host interface instead of every interface. The wrapper
       # resolves this to the server's Tailscale IPv4 address by default.
-      - "${RECON_SERVE_BIND_ADDRESS:-127.0.0.1}:${SERVICE_PORT:-8000}:${SERVICE_PORT:-8000}"
+      - "${GFM_SERVE_BIND_ADDRESS:-127.0.0.1}:${SERVICE_PORT:-8000}:${SERVICE_PORT:-8000}"
     volumes:
       - ./data:/app/data
       - huggingface-cache:/root/.cache/huggingface

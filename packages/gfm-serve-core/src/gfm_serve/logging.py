@@ -27,7 +27,7 @@ class JsonFormatter(logging.Formatter):
 
 def configure_logging() -> None:
     root = logging.getLogger()
-    if getattr(root, "_vggt_serve_configured", False):
+    if getattr(root, "_gfm_serve_configured", False):
         return
 
     handler = logging.StreamHandler()
@@ -36,5 +36,4 @@ def configure_logging() -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(logging.INFO)
-    root._vggt_serve_configured = True  # type: ignore[attr-defined]
-
+    root._gfm_serve_configured = True  # type: ignore[attr-defined]

@@ -1,7 +1,7 @@
 [project]
-name = "vggt-serve"
-version = "0.1.0"
-description = "Network-accessible VGGT reconstruction service."
+name = "gfm-serve"
+version = "0.2.0"
+description = "Network-accessible geometric foundation model service."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
@@ -26,9 +26,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["vggt_serve*"]
+where = ["packages/gfm-serve-core/src"]
+include = ["gfm_serve*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
+pythonpath = [
+    "packages/gfm-serve-core/src",
+    "services/vggt/src",
+    "services/depth-anything-3/src",
+]

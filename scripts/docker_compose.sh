@@ -4,16 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PORT="${SERVICE_PORT:-8000}"
-BIND_ADDRESS="${RECON_SERVE_BIND_ADDRESS:-}"
+BIND_ADDRESS="${GFM_SERVE_BIND_ADDRESS:-${RECON_SERVE_BIND_ADDRESS:-}}"
 GPU_ENABLED=1
 DETACH=0
 BUILD_ON_UP=1
 ACTION="up"
-BACKEND="${RECON_BACKEND:-vggt}"
+BACKEND="${GFM_BACKEND:-${RECON_BACKEND:-vggt}}"
 DOCKER_GPUS_VALUE="${DOCKER_GPUS:-all}"
 SHM_SIZE_VALUE="${SHM_SIZE:-8gb}"
-SERVICE_NAME="recon-serve"
-COMMON_IMAGE="${RECON_COMMON_IMAGE:-recon-serve-common:latest}"
+SERVICE_NAME="gfm-serve"
+COMMON_IMAGE="${GFM_COMMON_IMAGE:-gfm-serve-core:latest}"
 
 usage() {
   cat <<'EOF'
@@ -30,8 +30,8 @@ Actions:
 Options:
   -p, --port PORT     Forward this host/container port. Default: 8000
   --bind-address IP   Host IPv4 address to bind. Default: auto-detected Tailscale IP
-  --backend ID        Backend id and Dockerfile suffix. Default: vggt
-  --common-image TAG  Shared base image tag. Default: recon-serve-common:latest
+  --backend ID        Service directory name. Default: vggt
+  --common-image TAG  Shared base image tag. Default: gfm-serve-core:latest
   --cpu               Use the base compose file only and skip GPU settings.
   --gpus VALUE        GPU selector passed to compose. Default: all
   --shm-size VALUE    Shared memory size for GPU compose. Default: 8gb
@@ -185,14 +185,19 @@ resolve_bind_address() {
   fi
 }
 
-DOCKERFILE_PATH="docker/Dockerfile.${BACKEND}"
+DOCKERFILE_PATH="services/${BACKEND}/Dockerfile"
 if [ ! -f "${ROOT_DIR}/${DOCKERFILE_PATH}" ]; then
   echo "Backend Dockerfile not found: ${DOCKERFILE_PATH}" >&2
   exit 1
 fi
 
-if [ "$BACKEND" = "vggt" ] && { [ ! -f "${ROOT_DIR}/.gitmodules" ] || [ ! -f "${ROOT_DIR}/vggt/pyproject.toml" ]; }; then
-  echo "VGGT backend assets are missing. Run: git submodule update --init --recursive" >&2
+if [ ! -f "${ROOT_DIR}/services/${BACKEND}/pyproject.toml" ]; then
+  echo "Backend package not found: services/${BACKEND}/pyproject.toml" >&2
+  exit 1
+fi
+
+if [ ! -f "${ROOT_DIR}/services/${BACKEND}/upstream/pyproject.toml" ]; then
+  echo "${BACKEND} upstream assets are missing. Run: git submodule update --init --recursive" >&2
   exit 1
 fi
 
@@ -202,11 +207,11 @@ if [ "$GPU_ENABLED" -eq 1 ]; then
 fi
 
 export SERVICE_PORT="$PORT"
-export RECON_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
-export RECON_BACKEND="$BACKEND"
-export RECON_COMMON_IMAGE="$COMMON_IMAGE"
+export GFM_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
+export GFM_BACKEND="$BACKEND"
+export GFM_COMMON_IMAGE="$COMMON_IMAGE"
 export DOCKERFILE_PATH
-export SERVICE_IMAGE="recon-serve:${BACKEND}"
+export SERVICE_IMAGE="gfm-serve:${BACKEND}"
 export DOCKER_GPUS="$DOCKER_GPUS_VALUE"
 export SHM_SIZE="$SHM_SIZE_VALUE"
 
@@ -222,8 +227,8 @@ build_common_base() {
 case "$ACTION" in
   up)
     resolve_bind_address
-    export RECON_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
-    echo "Binding VGGT Serve to Tailscale address: http://${BIND_ADDRESS}:${PORT}"
+    export GFM_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
+    echo "Binding GFM Serve to address: http://${BIND_ADDRESS}:${PORT}"
     if [ "$BUILD_ON_UP" -eq 1 ]; then
       build_common_base
     fi

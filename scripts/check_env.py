@@ -24,7 +24,7 @@ def main() -> int:
             failed = True
             print(f"{module_name}: FAIL {type(exc).__name__}: {exc}")
 
-    for import_stmt in ("from vggt_serve.app import create_app",):
+    for import_stmt in ("from gfm_serve.app import create_app",):
         try:
             exec(import_stmt, {})
             print(f"{import_stmt}: OK")

@@ -1,0 +1,16 @@
+[project]
+name = "gfm-backend-vggt"
+version = "0.2.0"
+description = "VGGT backend adapter for GFM Serve."
+requires-python = ">=3.12"
+dependencies = ["gfm-serve-core==0.2.0"]
+
+[project.entry-points."gfm_serve.backends"]
+vggt = "gfm_backend_vggt:create_backend"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

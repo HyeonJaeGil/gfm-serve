@@ -1,11 +1,11 @@
-ARG COMMON_BASE_IMAGE=recon-serve-common:latest
+ARG COMMON_BASE_IMAGE=gfm-serve-core:latest
 FROM ${COMMON_BASE_IMAGE}
 
-COPY vggt ./vggt
+COPY services/vggt ./services/vggt
 
-ENV RECON_SERVE_BACKEND=vggt
+ENV GFM_SERVE_BACKEND=vggt
 
 RUN python -m pip install --upgrade pip setuptools wheel \
     && python -m pip install --index-url https://download.pytorch.org/whl/cu121 \
         torch==2.3.1 torchvision==0.18.1 \
-    && python -m pip install ./vggt .
+    && python -m pip install ./services/vggt/upstream ./services/vggt

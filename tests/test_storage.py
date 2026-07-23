@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from vggt_serve.storage import remap_square_tensor_to_original, rescale_intrinsics_to_original, sample_point_cloud, write_point_cloud_ply
+from gfm_serve.storage import remap_square_tensor_to_original, rescale_intrinsics_to_original, sample_point_cloud, write_point_cloud_ply
 
 
 def test_rescale_intrinsics_to_original() -> None:

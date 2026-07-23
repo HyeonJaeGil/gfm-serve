@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from vggt_serve.contracts import CameraInput, SceneInput
+from gfm_serve.contracts import CameraInput, SceneInput
 
 
 IDENTITY_4 = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]

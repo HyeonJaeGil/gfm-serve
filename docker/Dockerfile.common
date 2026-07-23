@@ -21,23 +21,22 @@ RUN curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY packages/gfm-serve-core ./packages/gfm-serve-core
 COPY scripts ./scripts
-COPY vggt_serve ./vggt_serve
 
-RUN conda create -y -n recon-serve-py312 python=3.12 pip setuptools wheel \
+RUN conda create -y -n gfm-serve-py312 python=3.12 pip setuptools wheel \
     && conda clean -afy
 
-ENV CONDA_DEFAULT_ENV=recon-serve-py312 \
-    PATH=/opt/conda/envs/recon-serve-py312/bin:$PATH \
-    LD_LIBRARY_PATH=/opt/conda/envs/recon-serve-py312/lib:$LD_LIBRARY_PATH \
+ENV CONDA_DEFAULT_ENV=gfm-serve-py312 \
+    PATH=/opt/conda/envs/gfm-serve-py312/bin:$PATH \
+    LD_LIBRARY_PATH=/opt/conda/envs/gfm-serve-py312/lib:$LD_LIBRARY_PATH \
     PIP_NO_CACHE_DIR=1 \
-    RECON_SERVE_HOST=0.0.0.0 \
-    RECON_SERVE_PORT=8000 \
-    RECON_SERVE_DATA_ROOT=/app/data/runs
+    GFM_SERVE_HOST=0.0.0.0 \
+    GFM_SERVE_PORT=8000 \
+    GFM_SERVE_DATA_ROOT=/app/data/runs
 
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install .
+    && python -m pip install ./packages/gfm-serve-core
 
 RUN chmod +x /app/scripts/docker-entrypoint.sh \
     && mkdir -p /app/data/runs
@@ -45,6 +44,6 @@ RUN chmod +x /app/scripts/docker-entrypoint.sh \
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-    CMD curl -fsS "http://127.0.0.1:${RECON_SERVE_PORT:-8000}/healthz" >/dev/null || exit 1
+    CMD curl -fsS "http://127.0.0.1:${GFM_SERVE_PORT:-8000}/healthz" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/scripts/docker-entrypoint.sh"]

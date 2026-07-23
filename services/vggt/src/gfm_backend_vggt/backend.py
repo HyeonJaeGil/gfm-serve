@@ -8,10 +8,10 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..config import Settings
-from ..contracts import CameraResult, ImageSize, ViewResult
-from ..errors import ServiceBusyApiError, ServiceUnavailableApiError
-from ..storage import (
+from gfm_serve.config import Settings
+from gfm_serve.contracts import BackendDescriptor, CameraResult, ImageSize, SceneInput, ViewResult
+from gfm_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
+from gfm_serve.storage import (
     ArtifactDescriptor,
     remap_square_tensor_to_original,
     rescale_intrinsics_to_original,
@@ -19,7 +19,9 @@ from ..storage import (
     write_depth_artifact,
     write_point_cloud_ply,
 )
-from .base import BackendRunRequest, BackendRunResult, ReconstructionBackend
+from gfm_serve.backends.base import BackendRunRequest, BackendRunResult, ReconstructionBackend
+
+from .config import VGGTBackendSettings
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ class VGGTBackend(ReconstructionBackend):
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.backend_settings = settings.vggt_backend_settings
+        self.backend_settings = VGGTBackendSettings()
         self._load_lock = threading.Lock()
         self._run_lock = threading.Lock()
         self._model = None
@@ -47,6 +49,21 @@ class VGGTBackend(ReconstructionBackend):
         self._device = None
         self._dtype = None
         self._last_error: str | None = None
+
+    @property
+    def descriptor(self) -> BackendDescriptor:
+        return BackendDescriptor(
+            backend=self.backend_id,
+            model_id=self.backend_settings.model_id,
+            inputs={"images": {"required": True}},
+            outputs=list(self.capabilities),
+            options_schema=self.options_model.model_json_schema(),
+        )
+
+    def validate_request(self, scene: SceneInput, options: dict[str, object] | None) -> BaseModel:
+        if any(view.camera is not None for view in scene.views):
+            raise ValueError("VGGT does not accept supplied camera inputs.")
+        return self.validate_options(options)
 
     @property
     def device_description(self) -> str | None:
