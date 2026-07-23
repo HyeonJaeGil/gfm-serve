@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from io import BytesIO
@@ -8,13 +7,13 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi import APIRouter, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ValidationError
 
 from .backends import BackendRunRequest, BackendRunResult, PreparedView, ReconstructionBackend
-from .contracts import SceneInput, ViewInput, ViewResult
+from .contracts import BackendDescriptor, ViewResult
 from .config import Settings
 from .errors import (
     ApiError,
@@ -33,6 +32,7 @@ from .schemas import (
     ReconstructionResponse,
     TimingStats,
 )
+from .request_parser import parse_reconstruction_multipart
 from .storage import ArtifactDescriptor, PreparedImage, sanitize_filename, write_json
 
 
@@ -164,20 +164,11 @@ def _build_response(
 def _parse_backend_options(
     *,
     backend: ReconstructionBackend,
-    backend_options_payload: str | None,
+    scene,
+    raw_options: dict[str, object],
     depth_conf_threshold: float | None,
 ) -> BaseModel:
-    raw_options: dict[str, object]
-    if backend_options_payload is None:
-        raw_options = {}
-    else:
-        try:
-            parsed = json.loads(backend_options_payload)
-        except json.JSONDecodeError as exc:
-            raise ValidationApiError("backend_options must be valid JSON.") from exc
-        if not isinstance(parsed, dict):
-            raise ValidationApiError("backend_options must be a JSON object.")
-        raw_options = dict(parsed)
+    raw_options = dict(raw_options)
 
     if depth_conf_threshold is not None:
         if backend.backend_id != "vggt":
@@ -187,9 +178,12 @@ def _parse_backend_options(
         raw_options.setdefault("depth_conf_threshold", depth_conf_threshold)
 
     try:
-        return backend.validate_options(raw_options)
-    except ValidationError as exc:
-        message = exc.errors()[0]["msg"] if exc.errors() else "Invalid backend_options."
+        return backend.validate_request(scene, raw_options)
+    except (ValidationError, ValueError) as exc:
+        if isinstance(exc, ValidationError):
+            message = exc.errors()[0]["msg"] if exc.errors() else "Invalid backend_options."
+        else:
+            message = str(exc)
         raise ValidationApiError(f"Invalid backend_options for '{backend.backend_id}': {message}") from exc
 
 
@@ -214,6 +208,11 @@ async def readyz(request: Request) -> JSONResponse:
     return JSONResponse(payload.model_dump(mode="json"), status_code=status_code)
 
 
+@router.get("/v1/models/current", response_model=BackendDescriptor)
+async def current_model(request: Request) -> BackendDescriptor:
+    return get_backend(request).descriptor
+
+
 @router.get("/v1/artifacts/{request_id}/{name}", name="download_artifact")
 async def download_artifact(request_id: str, name: str, request: Request) -> FileResponse:
     settings = get_settings(request)
@@ -232,11 +231,6 @@ async def download_artifact(request_id: str, name: str, request: Request) -> Fil
 @router.post("/v1/reconstructions", response_model=ReconstructionResponse)
 async def create_reconstruction(
     request: Request,
-    images: list[UploadFile] | None = File(default=None),
-    scene_id: str | None = Form(default=None),
-    client_request_id: str | None = Form(default=None),
-    depth_conf_threshold: float | None = Form(default=None),
-    backend_options: str | None = Form(default=None),
 ) -> JSONResponse:
     settings = get_settings(request)
     backend = get_backend(request)
@@ -254,15 +248,19 @@ async def create_reconstruction(
     input_summary: InputSummary | None = None
     validated_backend_options: BaseModel | None = None
     validation_ms = 0
+    parsed_request = None
+    scene_id: str | None = None
+    client_request_id: str | None = None
 
     request_payload = {
         "request_id": request_id,
         "backend": backend.backend_id,
-        "scene_id": scene_id,
-        "client_request_id": client_request_id,
+        "schema_version": "1.0",
+        "scene_id": None,
+        "client_request_id": None,
         "backend_options": None,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "filenames": [upload.filename for upload in images or []],
+        "filenames": [],
     }
     write_json(run_dir / "request.json", request_payload)
 
@@ -270,12 +268,22 @@ async def create_reconstruction(
         if error is not None:
             raise error
 
+        parsed_request = await parse_reconstruction_multipart(request)
+        scene_id = parsed_request.scene.scene_id
+        client_request_id = parsed_request.client_request_id
+        request_payload["scene_id"] = scene_id
+        request_payload["client_request_id"] = client_request_id
+        request_payload["filenames"] = [upload.filename for upload in parsed_request.uploads]
+        request_payload["normalized_manifest"] = parsed_request.scene.model_dump(mode="json")
         validated_backend_options = _parse_backend_options(
             backend=backend,
-            backend_options_payload=backend_options,
-            depth_conf_threshold=depth_conf_threshold,
+            scene=parsed_request.scene,
+            raw_options=parsed_request.raw_options,
+            depth_conf_threshold=parsed_request.compatibility_threshold,
         )
-        prepared_images, total_bytes = await _prepare_uploads(files=images, run_dir=run_dir, settings=settings)
+        prepared_images, total_bytes = await _prepare_uploads(
+            files=parsed_request.uploads, run_dir=run_dir, settings=settings
+        )
         validation_ms = int((perf_counter() - start) * 1000)
         input_summary = InputSummary(
             scene_id=scene_id,
@@ -283,16 +291,9 @@ async def create_reconstruction(
             filenames=[image.original_filename for image in prepared_images],
             total_bytes=total_bytes,
         )
-        scene = SceneInput(
-            scene_id=scene_id,
-            views=[
-                ViewInput(view_id=f"view-{index:03d}", upload_key=f"images-{index:03d}")
-                for index, _ in enumerate(prepared_images)
-            ],
-        )
         prepared_views = [
             PreparedView(view_id=view.view_id, upload_key=view.upload_key, image=image)
-            for view, image in zip(scene.views, prepared_images, strict=True)
+            for view, image in zip(parsed_request.scene.views, prepared_images, strict=True)
         ]
 
         request_payload["files"] = [
@@ -313,7 +314,7 @@ async def create_reconstruction(
             BackendRunRequest(
                 request_id=request_id,
                 run_dir=run_dir,
-                scene=scene,
+                scene=parsed_request.scene,
                 views=prepared_views,
                 backend_options=validated_backend_options,
             )
@@ -368,7 +369,13 @@ async def create_reconstruction(
                 "timings_ms": response_payload.timings_ms.model_dump(mode="json"),
             },
         )
-        return JSONResponse(response_payload.model_dump(mode="json"), status_code=status.HTTP_200_OK)
+        headers = {}
+        if parsed_request.compatibility_threshold is not None:
+            headers["Deprecation"] = "true"
+            headers["Warning"] = '299 - "depth_conf_threshold is deprecated; use manifest.options"'
+        return JSONResponse(
+            response_payload.model_dump(mode="json"), status_code=status.HTTP_200_OK, headers=headers
+        )
 
     except ApiError as exc:
         response_payload = _build_response(

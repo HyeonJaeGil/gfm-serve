@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from vggt_serve.app import create_app
 from vggt_serve.backends import BackendRunRequest, BackendRunResult, EmptyBackendOptions, ReconstructionBackend
 from vggt_serve.config import Settings
-from vggt_serve.contracts import CameraResult, ImageSize, ViewResult
+from vggt_serve.contracts import BackendDescriptor, CameraResult, ImageSize, SceneInput, ViewResult
 from vggt_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
 from vggt_serve.storage import ArtifactDescriptor, PreparedImage, write_depth_artifact, write_point_cloud_ply
 
@@ -52,6 +52,23 @@ class StubBackend(ReconstructionBackend):
         if self.backend_id == "vggt":
             return StubVGGTOptions.model_validate(payload or {})
         return EmptyBackendOptions.model_validate(payload or {})
+
+    @property
+    def descriptor(self) -> BackendDescriptor:
+        return BackendDescriptor(
+            backend=self.backend_id,
+            model_id=f"{self.backend_id}/stub",
+            inputs={
+                "images": {"required": True},
+                "camera.intrinsics": {"required": False},
+                "camera.world_to_camera": {"required": False},
+            },
+            outputs=list(self.capabilities),
+            options_schema=self.validate_options({}).__class__.model_json_schema(),
+        )
+
+    def validate_request(self, scene: SceneInput, options: dict[str, object] | None) -> BaseModel:
+        return self.validate_options(options)
 
     @property
     def device_description(self) -> str | None:
@@ -195,6 +212,7 @@ def test_reconstruction_success(tmp_path: Path) -> None:
     assert payload["status"] == "succeeded"
     assert payload["request_id"]
     assert payload["client_request_id"] == "client-123"
+    assert response.headers["deprecation"] == "true"
     assert payload["input_summary"]["image_count"] == 2
     assert len(payload["camera_results"]) == 2
     assert payload["produced_outputs"] == ["camera_poses", "depth", "depth_confidence", "point_cloud"]
@@ -208,6 +226,11 @@ def test_reconstruction_success(tmp_path: Path) -> None:
     request_payload = json.loads(request_path.read_text(encoding="utf-8"))
     assert request_payload["backend"] == "vggt"
     assert request_payload["backend_options"] == {"depth_conf_threshold": 4.0}
+    assert request_payload["schema_version"] == "1.0"
+    assert [view["view_id"] for view in request_payload["normalized_manifest"]["views"]] == [
+        "view-000",
+        "view-001",
+    ]
 
     artifact_url = payload["artifacts"][1]["url"]
     artifact_path = urlparse(artifact_url).path
@@ -291,3 +314,82 @@ def test_backend_options_must_be_json_object(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_manifest_request_associates_uploads_by_key(tmp_path: Path) -> None:
+    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3"))
+    manifest = {
+        "scene_id": "office",
+        "views": [
+            {
+                "view_id": "right",
+                "upload_key": "image_b",
+                "camera": {
+                    "convention": "opencv",
+                    "world_to_camera": np.eye(4).tolist(),
+                    "intrinsics": np.eye(3).tolist(),
+                },
+            },
+            {"view_id": "left", "upload_key": "image_a"},
+        ],
+        "options": {},
+    }
+
+    response = client.post(
+        "/v1/reconstructions",
+        files=[
+            ("image_a", ("left.png", _image_bytes((8, 6), (255, 0, 0)), "image/png")),
+            ("image_b", ("right.png", _image_bytes((9, 7), (0, 255, 0)), "image/png")),
+        ],
+        data={"manifest": json.dumps(manifest)},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["view_id"] for item in payload["view_results"]] == ["right", "left"]
+    assert [item["filename"] for item in payload["view_results"]] == ["right.png", "left.png"]
+
+
+def test_manifest_rejects_missing_and_extra_file_parts(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    manifest = {"views": [{"view_id": "one", "upload_key": "expected"}], "options": {}}
+
+    missing = client.post("/v1/reconstructions", data={"manifest": json.dumps(manifest)})
+    extra = client.post(
+        "/v1/reconstructions",
+        files=[
+            ("expected", ("ok.png", _image_bytes((4, 4), (0, 0, 0)), "image/png")),
+            ("extra", ("extra.png", _image_bytes((4, 4), (0, 0, 0)), "image/png")),
+        ],
+        data={"manifest": json.dumps(manifest)},
+    )
+
+    assert missing.status_code == 400
+    assert "Missing multipart" in missing.json()["error"]["message"]
+    assert extra.status_code == 400
+    assert "Unexpected multipart" in extra.json()["error"]["message"]
+
+
+def test_manifest_rejects_legacy_images_mixed_in(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    manifest = {"views": [{"view_id": "one", "upload_key": "expected"}], "options": {}}
+    response = client.post(
+        "/v1/reconstructions",
+        files=[("images", ("legacy.png", _image_bytes((4, 4), (0, 0, 0)), "image/png"))],
+        data={"manifest": json.dumps(manifest)},
+    )
+
+    assert response.status_code == 400
+    assert "Do not mix" in response.json()["error"]["message"]
+
+
+def test_current_model_exposes_descriptor_and_options_schema(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+
+    response = client.get("/v1/models/current")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["backend"] == "vggt"
+    assert payload["inputs"]["images"]["required"] is True
+    assert payload["options_schema"]["additionalProperties"] is False
