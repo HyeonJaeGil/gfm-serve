@@ -59,7 +59,8 @@ expected backend. DA3 additionally accepts typed NumPy camera calibration via
 
 The low-level HTTP example remains in `scripts/client_example.py`, including
 the legacy repeated `images` transport. See [docs/api.md](docs/api.md) for the
-wire contract and [docs/migration-v1.md](docs/migration-v1.md) for
+wire contract, [docs/clients.md](docs/clients.md) for a comparison of every
+client interface, and [docs/migration-v1.md](docs/migration-v1.md) for
 compatibility dates.
 
 ## Development

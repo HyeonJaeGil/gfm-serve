@@ -4,6 +4,10 @@
 backends. It builds multipart manifests, validates inputs before upload, parses
 typed responses, and downloads result artifacts.
 
+For raw `curl` and low-level HTTP examples, see
+[`docs/clients.md`](../../docs/clients.md). This document is the reference for
+the installable Python package.
+
 ## Install
 
 From this repository:

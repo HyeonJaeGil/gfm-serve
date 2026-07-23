@@ -37,6 +37,60 @@ curl -X POST http://127.0.0.1:8000/v1/reconstructions \
   -F image_000=@image.png
 ```
 
+For a pose-conditioned Depth Anything 3 request, every view must contain both
+camera matrices:
+
+```bash
+curl -X POST http://127.0.0.1:9001/v1/reconstructions \
+  -F 'manifest={
+    "scene_id":"office",
+    "views":[
+      {
+        "view_id":"left",
+        "upload_key":"image_000",
+        "camera":{
+          "convention":"opencv",
+          "world_to_camera":[
+            [1,0,0,0],
+            [0,1,0,0],
+            [0,0,1,0],
+            [0,0,0,1]
+          ],
+          "intrinsics":[
+            [800,0,640],
+            [0,800,360],
+            [0,0,1]
+          ]
+        }
+      },
+      {
+        "view_id":"right",
+        "upload_key":"image_001",
+        "camera":{
+          "convention":"opencv",
+          "world_to_camera":[
+            [1,0,0,-0.1],
+            [0,1,0,0],
+            [0,0,1,0],
+            [0,0,0,1]
+          ],
+          "intrinsics":[
+            [800,0,640],
+            [0,800,360],
+            [0,0,1]
+          ]
+        }
+      }
+    ],
+    "options":{
+      "align_to_input_ext_scale":true,
+      "process_res":504
+    }
+  }' \
+  -F image_000=@frames/000.png \
+  -F image_001=@frames/001.png
+```
+
 File order is irrelevant; `upload_key` determines view order. View IDs and
 upload keys must be unique. Extra, missing, duplicated, mixed legacy/manifest,
 non-image, empty, corrupt, and oversized file parts are rejected.
