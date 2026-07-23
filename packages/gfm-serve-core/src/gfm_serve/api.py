@@ -130,12 +130,14 @@ def _artifact_to_response(request: Request, request_id: str, artifact: ArtifactD
         url=str(request.url_for("download_artifact", request_id=request_id, name=artifact.name)),
         content_type=artifact.content_type,
         size_bytes=artifact.size_bytes,
+        metadata=artifact.metadata,
     )
 
 
 def _build_response(
     *,
     backend_id: str,
+    backend_descriptor: BackendDescriptor,
     request_id: str,
     client_request_id: str | None,
     status_value: str,
@@ -145,18 +147,23 @@ def _build_response(
     artifacts: list[ArtifactInfo] | None = None,
     produced_outputs: list[str] | None = None,
     error: ErrorInfo | None = None,
+    normalized_request: dict[str, object] | None = None,
+    warnings: list[str] | None = None,
 ) -> ReconstructionResponse:
     return ReconstructionResponse(
         backend=backend_id,
+        model=backend_descriptor,
         request_id=request_id,
         client_request_id=client_request_id,
         status=status_value,  # type: ignore[arg-type]
         input_summary=input_summary,
         timings_ms=timings_ms,
         view_results=view_results or [],
-        camera_results=view_results or [],
+        camera_results=[result for result in (view_results or []) if result.camera is not None],
         artifacts=artifacts or [],
         produced_outputs=produced_outputs or [],
+        normalized_request=normalized_request,
+        warnings=warnings or [],
         error=error,
     )
 
@@ -319,6 +326,13 @@ async def create_reconstruction(
                 backend_options=validated_backend_options,
             )
         )
+        expected_view_ids = [view.view_id for view in parsed_request.scene.views]
+        actual_view_ids = [view.view_id for view in result.view_results]
+        if actual_view_ids != expected_view_ids:
+            raise RuntimeError(
+                f"Backend '{backend.backend_id}' returned view IDs {actual_view_ids}; "
+                f"expected {expected_view_ids}."
+            )
 
         result_json_artifact = run_dir / "result.json"
         artifact_descriptors = list(result.artifacts)
@@ -335,6 +349,7 @@ async def create_reconstruction(
 
         response_payload = _build_response(
             backend_id=backend.backend_id,
+            backend_descriptor=backend.descriptor,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="succeeded",
@@ -348,6 +363,16 @@ async def create_reconstruction(
             view_results=result.view_results,
             artifacts=artifacts,
             produced_outputs=result.produced_outputs,
+            normalized_request={
+                "scene": parsed_request.scene.model_dump(mode="json"),
+                "options": validated_backend_options.model_dump(mode="json"),
+            },
+            warnings=result.warnings
+            + (
+                ["depth_conf_threshold was translated to VGGT backend options."]
+                if parsed_request.compatibility_threshold is not None
+                else []
+            ),
         )
         write_json(result_json_artifact, response_payload.model_dump(mode="json"))
 
@@ -380,6 +405,7 @@ async def create_reconstruction(
     except ApiError as exc:
         response_payload = _build_response(
             backend_id=backend.backend_id,
+            backend_descriptor=backend.descriptor,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="failed",
@@ -389,6 +415,11 @@ async def create_reconstruction(
                 total=int((perf_counter() - start) * 1000),
             ),
             error=ErrorInfo(code=exc.code, message=exc.message),
+            normalized_request=(
+                {"scene": parsed_request.scene.model_dump(mode="json")}
+                if parsed_request is not None
+                else None
+            ),
         )
         write_json(run_dir / "result.json", response_payload.model_dump(mode="json"))
         LOGGER.warning(
@@ -407,6 +438,7 @@ async def create_reconstruction(
         api_error = ExecutionFailedApiError(str(exc))
         response_payload = _build_response(
             backend_id=backend.backend_id,
+            backend_descriptor=backend.descriptor,
             request_id=request_id,
             client_request_id=client_request_id,
             status_value="failed",

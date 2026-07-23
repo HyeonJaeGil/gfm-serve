@@ -1,4 +1,4 @@
-name: recon-serve-py312
+name: gfm-serve-vggt-py312
 channels:
   - pytorch
   - nvidia
@@ -15,5 +15,6 @@ dependencies:
   - pillow
   - pip
   - pip:
-      - -e ./vggt
-      - -e .[test]
+      - -e ./packages/gfm-serve-core
+      - -e ./services/vggt/upstream
+      - -e ./services/vggt

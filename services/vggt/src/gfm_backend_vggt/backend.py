@@ -55,6 +55,7 @@ class VGGTBackend(ReconstructionBackend):
         return BackendDescriptor(
             backend=self.backend_id,
             model_id=self.backend_settings.model_id,
+            model_revision=self.backend_settings.model_revision,
             inputs={"images": {"required": True}},
             outputs=list(self.capabilities),
             options_schema=self.options_model.model_json_schema(),
@@ -115,7 +116,10 @@ class VGGTBackend(ReconstructionBackend):
                             state_dict = state_dict["state_dict"]
                         model.load_state_dict(state_dict)
                 else:
-                    model = VGGT.from_pretrained(self.backend_settings.model_id)
+                    model = VGGT.from_pretrained(
+                        self.backend_settings.model_id,
+                        revision=self.backend_settings.model_revision,
+                    )
 
                 model.point_head = None
                 model.track_head = None
@@ -288,6 +292,16 @@ class VGGTBackend(ReconstructionBackend):
                 kind="depth_archive",
                 content_type="application/octet-stream",
                 size_bytes=depth_path.stat().st_size,
+                metadata={
+                    "schema_version": "1.0",
+                    "dtype": "float32",
+                    "shape": ["views", "original_height", "original_width"],
+                    "units": "model-relative",
+                    "coordinate_convention": "opencv",
+                    "backend": self.backend_id,
+                    "model_id": self.backend_settings.model_id,
+                    "model_revision": self.backend_settings.model_revision,
+                },
             ),
             ArtifactDescriptor(
                 name=ply_path.name,
@@ -295,6 +309,16 @@ class VGGTBackend(ReconstructionBackend):
                 kind="point_cloud",
                 content_type="application/octet-stream",
                 size_bytes=ply_path.stat().st_size,
+                metadata={
+                    "schema_version": "1.0",
+                    "dtype": "float32",
+                    "shape": ["points", 3],
+                    "units": "model-relative",
+                    "coordinate_convention": "opencv-world",
+                    "backend": self.backend_id,
+                    "model_id": self.backend_settings.model_id,
+                    "model_revision": self.backend_settings.model_revision,
+                },
             ),
         ]
 

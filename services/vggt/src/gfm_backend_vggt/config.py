@@ -15,6 +15,14 @@ class VGGTBackendSettings(BaseSettings):
             "GFM_SERVE_VGGT_MODEL_ID", "RECON_SERVE_VGGT_MODEL_ID", "VGGT_SERVE_MODEL_ID"
         ),
     )
+    model_revision: str = Field(
+        default="main",
+        validation_alias=AliasChoices(
+            "GFM_SERVE_VGGT_MODEL_REVISION",
+            "RECON_SERVE_VGGT_MODEL_REVISION",
+            "VGGT_SERVE_MODEL_REVISION",
+        ),
+    )
     checkpoint_path: Path | None = Field(
         default=None,
         validation_alias=AliasChoices(

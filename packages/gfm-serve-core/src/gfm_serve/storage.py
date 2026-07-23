@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +29,7 @@ class ArtifactDescriptor:
     kind: str
     content_type: str
     size_bytes: int
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 def sanitize_filename(filename: str | None, fallback: str) -> str:

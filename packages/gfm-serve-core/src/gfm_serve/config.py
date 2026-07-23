@@ -33,8 +33,8 @@ class Settings(BaseSettings):
         default_factory=lambda: Path("data/runs"),
         validation_alias=AliasChoices("GFM_SERVE_DATA_ROOT", "RECON_SERVE_DATA_ROOT", "VGGT_SERVE_DATA_ROOT"),
     )
-    backend: str = Field(
-        default="vggt",
+    backend: str | None = Field(
+        default=None,
         validation_alias=AliasChoices("GFM_SERVE_BACKEND", "RECON_SERVE_BACKEND", "VGGT_SERVE_BACKEND"),
     )
     max_images: int = Field(

@@ -291,6 +291,16 @@ class DA3Backend(ReconstructionBackend):
                 kind="depth",
                 content_type="application/octet-stream",
                 size_bytes=depth_path.stat().st_size,
+                metadata={
+                    "schema_version": "1.0",
+                    "dtype": "float32",
+                    "shape": ["views", "original_height", "original_width"],
+                    "units": "metric" if bool(getattr(prediction, "is_metric", False)) else "model-relative",
+                    "coordinate_convention": "opencv",
+                    "backend": self.backend_id,
+                    "model_id": self.backend_settings.model_id,
+                    "model_revision": self.backend_settings.model_revision,
+                },
             )
         ]
         outputs = ["depth"]
@@ -312,6 +322,18 @@ class DA3Backend(ReconstructionBackend):
                     kind="point_cloud",
                     content_type="application/octet-stream",
                     size_bytes=point_cloud_path.stat().st_size,
+                    metadata={
+                        "schema_version": "1.0",
+                        "dtype": "float32",
+                        "shape": ["points", 3],
+                        "units": "metric"
+                        if bool(getattr(prediction, "is_metric", False))
+                        else "model-relative",
+                        "coordinate_convention": "opencv-world",
+                        "backend": self.backend_id,
+                        "model_id": self.backend_settings.model_id,
+                        "model_revision": self.backend_settings.model_revision,
+                    },
                 )
             )
             outputs.extend(["camera_poses", "point_cloud"])
@@ -337,6 +359,13 @@ class DA3Backend(ReconstructionBackend):
                     kind="depth-anything-3/gaussian-splats",
                     content_type="application/octet-stream",
                     size_bytes=gaussian_path.stat().st_size,
+                    metadata={
+                        "schema_version": "1.0",
+                        "coordinate_convention": "opencv-world",
+                        "backend": self.backend_id,
+                        "model_id": self.backend_settings.model_id,
+                        "model_revision": self.backend_settings.model_revision,
+                    },
                 )
             )
             outputs.append("depth-anything-3/gaussian-splats")

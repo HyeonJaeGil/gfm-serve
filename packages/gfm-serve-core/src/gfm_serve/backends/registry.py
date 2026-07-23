@@ -31,6 +31,14 @@ def register_backend(backend_id: str, factory: BackendFactory) -> None:
 
 def create_backend(settings: Settings) -> ReconstructionBackend:
     available = _discover_backends()
+    if settings.backend is None:
+        if len(available) != 1:
+            known = ", ".join(sorted(available)) or "none"
+            raise ValueError(
+                "Exactly one backend must be installed when GFM_SERVE_BACKEND is unset. "
+                f"Discovered: {known}."
+            )
+        return next(iter(available.values()))(settings)
     try:
         factory = available[settings.backend]
     except KeyError as exc:

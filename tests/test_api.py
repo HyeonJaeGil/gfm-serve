@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +17,7 @@ from gfm_serve.config import Settings
 from gfm_serve.contracts import BackendDescriptor, CameraResult, ImageSize, SceneInput, ViewResult
 from gfm_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
 from gfm_serve.storage import ArtifactDescriptor, PreparedImage, write_depth_artifact, write_point_cloud_ply
+from gfm_backend_vggt import VGGTBackend
 
 
 def _image_bytes(size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
@@ -137,7 +139,14 @@ class StubBackend(ReconstructionBackend):
                 )
             )
 
-        view_results = []
+        view_results = [
+            ViewResult(
+                view_id=view.view_id,
+                filename=view.image.original_filename,
+                original_size=ImageSize(width=view.image.width, height=view.image.height),
+            )
+            for view in request.views
+        ]
         if "camera_poses" in self.capabilities:
             view_results = [
                 ViewResult(
@@ -185,6 +194,7 @@ def test_readyz_not_ready(tmp_path: Path) -> None:
         "status": "not_ready",
         "ready": False,
         "backend": "vggt",
+        "model_descriptor_url": "/v1/models/current",
         "capabilities": ["camera_poses", "depth", "depth_confidence", "point_cloud"],
         "device": None,
         "error": "backend load failed",
@@ -209,11 +219,18 @@ def test_reconstruction_success(tmp_path: Path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["backend"] == "vggt"
+    assert payload["service_version"] == "0.2.0"
+    assert payload["result_schema_version"] == "1.0"
+    assert payload["model"]["backend"] == "vggt"
     assert payload["status"] == "succeeded"
     assert payload["request_id"]
     assert payload["client_request_id"] == "client-123"
     assert response.headers["deprecation"] == "true"
     assert payload["input_summary"]["image_count"] == 2
+    assert payload["normalized_request"]["scene"]["scene_id"] == "scene-1"
+    assert payload["warnings"] == [
+        "depth_conf_threshold was translated to VGGT backend options."
+    ]
     assert len(payload["camera_results"]) == 2
     assert payload["produced_outputs"] == ["camera_poses", "depth", "depth_confidence", "point_cloud"]
     assert [(artifact["name"], artifact["kind"]) for artifact in payload["artifacts"]] == [
@@ -297,6 +314,7 @@ def test_depth_only_backend_returns_empty_camera_results(tmp_path: Path) -> None
     payload = response.json()
     assert payload["backend"] == "depth-anything3"
     assert payload["camera_results"] == []
+    assert len(payload["view_results"]) == 1
     assert payload["produced_outputs"] == ["depth"]
     assert [(artifact["name"], artifact["kind"]) for artifact in payload["artifacts"]] == [
         ("depth.npz", "depth_archive"),
@@ -393,3 +411,56 @@ def test_current_model_exposes_descriptor_and_options_schema(tmp_path: Path) -> 
     assert payload["backend"] == "vggt"
     assert payload["inputs"]["images"]["required"] is True
     assert payload["options_schema"]["additionalProperties"] is False
+
+
+def test_manifest_rejects_invalid_camera_matrix(tmp_path: Path) -> None:
+    client = _make_client(tmp_path, backend=StubBackend(backend_id="depth-anything3"))
+    manifest = {
+        "views": [
+            {
+                "view_id": "one",
+                "upload_key": "image",
+                "camera": {
+                    "convention": "opencv",
+                    "world_to_camera": [[1, 0], [0, 1]],
+                },
+            }
+        ],
+        "options": {},
+    }
+    response = client.post(
+        "/v1/reconstructions",
+        files=[("image", ("image.png", _image_bytes((4, 4), (0, 0, 0)), "image/png"))],
+        data={"manifest": json.dumps(manifest)},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_vggt_rejects_supplied_camera_input(tmp_path: Path) -> None:
+    client = _make_client(tmp_path)
+    manifest = {
+        "views": [
+            {
+                "view_id": "one",
+                "upload_key": "image",
+                "camera": {
+                    "convention": "opencv",
+                    "world_to_camera": np.eye(4).tolist(),
+                    "intrinsics": np.eye(3).tolist(),
+                },
+            }
+        ],
+        "options": {},
+    }
+    response = client.post(
+        "/v1/reconstructions",
+        files=[("image", ("image.png", _image_bytes((4, 4), (0, 0, 0)), "image/png"))],
+        data={"manifest": json.dumps(manifest)},
+    )
+
+    assert response.status_code == 200  # Stub VGGT accepts cameras for transport isolation.
+    real_backend = VGGTBackend(Settings(data_root=tmp_path / "real-runs"))
+    with pytest.raises(ValueError, match="does not accept supplied camera"):
+        real_backend.validate_request(SceneInput.model_validate({"views": manifest["views"]}), {})

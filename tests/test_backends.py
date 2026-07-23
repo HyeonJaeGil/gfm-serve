@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from gfm_backend_vggt import VGGTBackend
 from gfm_backend_vggt.config import VGGTBackendSettings
 from gfm_serve.backends import create_backend, list_backends
+from gfm_serve.backends import registry
 from gfm_serve.config import Settings
 
 
@@ -65,3 +66,14 @@ def test_legacy_environment_names_remain_supported(monkeypatch, tmp_path) -> Non
 
     assert Settings().data_root == tmp_path / "legacy"
     assert VGGTBackendSettings().model_id == "legacy/model"
+
+
+def test_backend_selection_is_required_when_multiple_are_installed(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        registry,
+        "_discover_backends",
+        lambda: {"one": lambda settings: object(), "two": lambda settings: object()},
+    )
+
+    with pytest.raises(ValueError, match="Exactly one backend"):
+        create_backend(Settings(data_root=tmp_path / "runs", backend=None))

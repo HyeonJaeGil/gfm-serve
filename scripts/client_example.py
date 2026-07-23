@@ -31,10 +31,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional client request identifier to send with the request.",
     )
     parser.add_argument(
-        "--depth-conf-threshold",
-        type=float,
-        default=None,
-        help="VGGT compatibility field. Avoid this for non-VGGT backends.",
+        "--legacy",
+        action="store_true",
+        help="Use the deprecated repeated-images v1 transport.",
     )
     parser.add_argument(
         "--backend-options-json",
@@ -65,12 +64,14 @@ def guess_content_type(path: Path) -> str:
     raise ValueError(f"Unsupported file extension for upload: {path}")
 
 
-def build_files(image_paths: Iterable[Path]) -> list[tuple[str, tuple[str, object, str]]]:
+def build_files(
+    image_paths: Iterable[Path], *, legacy: bool
+) -> list[tuple[str, tuple[str, object, str]]]:
     files: list[tuple[str, tuple[str, object, str]]] = []
     for image_path in image_paths:
         files.append(
             (
-                "images",
+                "images" if legacy else f"image_{len(files):03d}",
                 (
                     image_path.name,
                     image_path.open("rb"),
@@ -107,17 +108,29 @@ def main() -> int:
         if not image_path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-    files = build_files(image_paths)
-    data = {
-    }
-    if args.scene_id is not None:
-        data["scene_id"] = args.scene_id
+    files = build_files(image_paths, legacy=args.legacy)
+    options = json.loads(args.backend_options_json) if args.backend_options_json else {}
+    if not isinstance(options, dict):
+        raise ValueError("--backend-options-json must contain a JSON object.")
+    data = {}
+    if args.legacy:
+        if args.scene_id is not None:
+            data["scene_id"] = args.scene_id
+        if options:
+            data["backend_options"] = json.dumps(options)
+    else:
+        data["manifest"] = json.dumps(
+            {
+                "scene_id": args.scene_id,
+                "views": [
+                    {"view_id": f"view-{index:03d}", "upload_key": key}
+                    for index, (key, _) in enumerate(files)
+                ],
+                "options": options,
+            }
+        )
     if args.client_request_id is not None:
         data["client_request_id"] = args.client_request_id
-    if args.depth_conf_threshold is not None:
-        data["depth_conf_threshold"] = str(args.depth_conf_threshold)
-    if args.backend_options_json is not None:
-        data["backend_options"] = args.backend_options_json
 
     url = f"{args.base_url.rstrip('/')}/v1/reconstructions"
     try:

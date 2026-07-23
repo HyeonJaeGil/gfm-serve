@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -41,6 +41,7 @@ class BackendRunResult:
     artifacts: list[ArtifactDescriptor]
     produced_outputs: list[str]
     timings_ms: dict[str, int]
+    warnings: list[str] = field(default_factory=list)
 
 
 class ReconstructionBackend(ABC):
