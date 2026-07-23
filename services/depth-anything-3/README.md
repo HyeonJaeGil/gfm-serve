@@ -46,3 +46,19 @@ scripts/docker_compose.sh up --backend depth-anything-3 --bind-address 127.0.0.1
 
 Use the common manifest request documented in `docs/api.md`; select this image
 with `GFM_SERVE_BACKEND=depth-anything-3`.
+
+## Opt-in GPU smoke
+
+The image build performs a dependency/import smoke without downloading weights.
+On a CUDA host, run the separate end-to-end model smoke with a small fixture:
+
+```bash
+docker run --rm --gpus all \
+  -v "$PWD/test-images:/fixtures:ro" \
+  gfm-serve:depth-anything-3 \
+  python /app/services/depth-anything-3/scripts/gpu_smoke.py \
+  /fixtures/one.png /fixtures/two.png
+```
+
+It loads the configured checkpoint and verifies output view counts, shapes,
+finiteness, and positive depth rather than unstable numeric equality.
