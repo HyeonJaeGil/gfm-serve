@@ -232,6 +232,13 @@ def test_reconstruction_success(tmp_path: Path) -> None:
         "depth_conf_threshold was translated to VGGT backend options."
     ]
     assert len(payload["camera_results"]) == 2
+    assert set(payload["camera_results"][0]) == {
+        "filename",
+        "original_size",
+        "cam_from_world",
+        "intrinsics",
+    }
+    assert payload["camera_results"][0]["cam_from_world"] == np.eye(4).tolist()
     assert payload["produced_outputs"] == ["camera_poses", "depth", "depth_confidence", "point_cloud"]
     assert [(artifact["name"], artifact["kind"]) for artifact in payload["artifacts"]] == [
         ("depth.npz", "depth_archive"),

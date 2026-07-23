@@ -21,6 +21,13 @@ class TimingStats(BaseModel):
     total: int = 0
 
 
+class LegacyCameraResult(BaseModel):
+    filename: str
+    original_size: ImageSize
+    cam_from_world: list[list[float]]
+    intrinsics: list[list[float]]
+
+
 class ArtifactInfo(BaseModel):
     name: str
     kind: str
@@ -46,7 +53,7 @@ class ReconstructionResponse(BaseModel):
     input_summary: InputSummary | None = None
     timings_ms: TimingStats
     view_results: list[ViewResult] = Field(default_factory=list)
-    camera_results: list[ViewResult] = Field(default_factory=list)
+    camera_results: list[LegacyCameraResult] = Field(default_factory=list)
     artifacts: list[ArtifactInfo] = Field(default_factory=list)
     produced_outputs: list[str] = Field(default_factory=list)
     normalized_request: dict[str, object] | None = None

@@ -28,6 +28,7 @@ from .schemas import (
     ErrorInfo,
     HealthResponse,
     InputSummary,
+    LegacyCameraResult,
     ReadyResponse,
     ReconstructionResponse,
     TimingStats,
@@ -159,7 +160,18 @@ def _build_response(
         input_summary=input_summary,
         timings_ms=timings_ms,
         view_results=view_results or [],
-        camera_results=[result for result in (view_results or []) if result.camera is not None],
+        camera_results=[
+            LegacyCameraResult(
+                filename=result.filename,
+                original_size=result.original_size,
+                cam_from_world=[list(row) for row in result.camera.world_to_camera],
+                intrinsics=[list(row) for row in result.camera.intrinsics],
+            )
+            for result in (view_results or [])
+            if result.camera is not None
+            and result.camera.world_to_camera is not None
+            and result.camera.intrinsics is not None
+        ],
         artifacts=artifacts or [],
         produced_outputs=produced_outputs or [],
         normalized_request=normalized_request,
