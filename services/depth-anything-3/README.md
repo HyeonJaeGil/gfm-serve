@@ -47,6 +47,13 @@ scripts/docker_compose.sh up --backend depth-anything-3 --bind-address 127.0.0.1
 Use the common manifest request documented in `docs/api.md`; select this image
 with `GFM_SERVE_BACKEND=depth-anything-3`.
 
+For application code, use `DepthAnything3Client` from
+`packages/gfm-serve-client`. `CameraParameters.from_matrices()` accepts NumPy
+world-to-camera matrices, while `CameraParameters.from_camera_to_world()`
+performs pose inversion. Camera counts, shapes, finite values, and homogeneous
+rows are checked before upload. See `packages/gfm-serve-client/README.md` and
+the runnable `examples/depth_anything_3_client.py`.
+
 ## Opt-in GPU smoke
 
 The image build performs a dependency/import smoke without downloading weights.

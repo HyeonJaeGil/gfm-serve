@@ -65,3 +65,23 @@ and confidence arrays. Point clouds use the OpenCV-derived world frame.
 Artifacts are retrieved from
 `GET /v1/artifacts/{request_id}/{name}` and are confined to the request run
 directory.
+
+## Python SDK
+
+Application code does not need to construct multipart requests directly.
+Install the typed client from `packages/gfm-serve-client` and use the
+backend-specific wrapper:
+
+```python
+from gfm_serve_client import DepthAnything3Client
+
+with DepthAnything3Client("http://127.0.0.1:9001") as client:
+    result = client.reconstruct(["000.png", "001.png"])
+    depths = client.load_depth_archive(result)
+```
+
+Use `VGGTClient` for a VGGT service. The SDK covers discovery, readiness,
+request validation, NumPy camera matrices, structured errors, typed results,
+and streaming artifact downloads. Its complete API and pose-conditioned DA3
+example are documented in
+[`packages/gfm-serve-client/README.md`](../packages/gfm-serve-client/README.md).
