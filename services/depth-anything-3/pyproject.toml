@@ -1,0 +1,16 @@
+[project]
+name = "gfm-backend-depth-anything-3"
+version = "0.2.0"
+description = "Depth Anything 3 backend adapter for GFM Serve."
+requires-python = ">=3.12"
+dependencies = ["gfm-serve-core==0.2.0"]
+
+[project.entry-points."gfm_serve.backends"]
+depth-anything-3 = "gfm_backend_depth_anything_3:create_backend"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

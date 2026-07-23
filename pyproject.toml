@@ -30,7 +30,7 @@ where = ["packages/gfm-serve-core/src"]
 include = ["gfm_serve*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "services/vggt/tests", "services/depth-anything-3/tests"]
 pythonpath = [
     "packages/gfm-serve-core/src",
     "services/vggt/src",

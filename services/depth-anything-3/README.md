@@ -1,0 +1,44 @@
+# Depth Anything 3 service
+
+This service packages the pinned
+[Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3)
+upstream at commit `3fe327a6abe2e5db95b54444ea95463dbfef5610`.
+The default checkpoint is `depth-anything/DA3NESTED-GIANT-LARGE`.
+
+## Inputs and options
+
+Image-only requests are supported by every configured variant. Pose-conditioned
+requests must provide both OpenCV pixel-space `intrinsics` and homogeneous
+world-to-camera `world_to_camera` matrices for every view. Mono and metric-only
+variants reject camera input.
+
+Supported options are `align_to_input_ext_scale`, `infer_gs`, `use_ray_pose`,
+`ref_view_strategy`, `process_res`, and `process_res_method`. Unknown options
+are rejected. `infer_gs` is advertised and accepted only for compatible giant
+or nested giant variants.
+
+The adapter returns original-resolution depth/confidence artifacts. It returns
+OpenCV cameras and a point cloud when the selected variant produces both
+extrinsics and intrinsics. Camera sources are marked `predicted`, `provided`,
+or `aligned`.
+
+## Configuration
+
+- `GFM_SERVE_DEPTH_ANYTHING_3_MODEL_ID`
+- `GFM_SERVE_DEPTH_ANYTHING_3_MODEL_REVISION`
+- `GFM_SERVE_DEPTH_ANYTHING_3_DEVICE` (`auto`, `cpu`, or `cuda`)
+- `GFM_SERVE_DEPTH_ANYTHING_3_MAX_POINT_CLOUD_POINTS`
+
+Legacy `RECON_SERVE_DEPTH_ANYTHING_3_*` names remain aliases during the v1
+migration window.
+
+## Build and run
+
+```bash
+git submodule update --init --recursive
+scripts/docker_compose.sh build --backend depth-anything-3
+scripts/docker_compose.sh up --backend depth-anything-3 --bind-address 127.0.0.1
+```
+
+Use the common manifest request documented in `docs/api.md`; select this image
+with `GFM_SERVE_BACKEND=depth-anything-3`.
