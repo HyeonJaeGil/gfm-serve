@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PORT="${SERVICE_PORT:-8000}"
+BIND_ADDRESS="${RECON_SERVE_BIND_ADDRESS:-}"
 GPU_ENABLED=1
 DETACH=0
 BUILD_ON_UP=1
@@ -28,6 +29,7 @@ Actions:
 
 Options:
   -p, --port PORT     Forward this host/container port. Default: 8000
+  --bind-address IP   Host IPv4 address to bind. Default: auto-detected Tailscale IP
   --backend ID        Backend id and Dockerfile suffix. Default: vggt
   --common-image TAG  Shared base image tag. Default: recon-serve-common:latest
   --cpu               Use the base compose file only and skip GPU settings.
@@ -39,6 +41,7 @@ Options:
 
 Examples:
   scripts/docker_compose.sh up --backend vggt --port 9000
+  scripts/docker_compose.sh up --backend vggt --port 9000 --bind-address 127.0.0.1
   scripts/docker_compose.sh up --backend vggt --port 9000 --cpu
   scripts/docker_compose.sh logs --backend vggt --port 9000
   scripts/docker_compose.sh down
@@ -57,6 +60,14 @@ while [ "$#" -gt 0 ]; do
         exit 1
       fi
       PORT="$2"
+      shift 2
+      ;;
+    --bind-address)
+      if [ "$#" -lt 2 ]; then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      BIND_ADDRESS="$2"
       shift 2
       ;;
     --backend)
@@ -120,6 +131,60 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; th
   exit 1
 fi
 
+is_ipv4_address() {
+  local address="$1"
+  local numeric_octet
+  local octet
+  local IFS=.
+  local -a octets
+
+  if ! [[ "$address" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    return 1
+  fi
+
+  read -r -a octets <<<"$address"
+  if [ "${#octets[@]}" -ne 4 ]; then
+    return 1
+  fi
+  for octet in "${octets[@]}"; do
+    numeric_octet=$((10#$octet))
+    if [ "$numeric_octet" -gt 255 ]; then
+      return 1
+    fi
+  done
+}
+
+resolve_bind_address() {
+  local detected_addresses
+
+  if [ -n "$BIND_ADDRESS" ]; then
+    if ! is_ipv4_address "$BIND_ADDRESS"; then
+      echo "Bind address must be an IPv4 address: $BIND_ADDRESS" >&2
+      exit 1
+    fi
+    return
+  fi
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "Tailscale is required but the 'tailscale' command was not found." >&2
+    echo "Install and connect Tailscale, or explicitly use --bind-address IP." >&2
+    exit 1
+  fi
+
+  if ! detected_addresses="$(tailscale ip -4 2>/dev/null)"; then
+    echo "Tailscale is installed but is not connected." >&2
+    echo "Connect it with 'tailscale up', then try again." >&2
+    exit 1
+  fi
+  BIND_ADDRESS="${detected_addresses%%$'\n'*}"
+
+  if [ -z "$BIND_ADDRESS" ] || ! is_ipv4_address "$BIND_ADDRESS"; then
+    echo "Could not detect a Tailscale IPv4 address." >&2
+    echo "Connect Tailscale, then try again." >&2
+    exit 1
+  fi
+}
+
 DOCKERFILE_PATH="docker/Dockerfile.${BACKEND}"
 if [ ! -f "${ROOT_DIR}/${DOCKERFILE_PATH}" ]; then
   echo "Backend Dockerfile not found: ${DOCKERFILE_PATH}" >&2
@@ -137,6 +202,7 @@ if [ "$GPU_ENABLED" -eq 1 ]; then
 fi
 
 export SERVICE_PORT="$PORT"
+export RECON_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
 export RECON_BACKEND="$BACKEND"
 export RECON_COMMON_IMAGE="$COMMON_IMAGE"
 export DOCKERFILE_PATH
@@ -155,6 +221,9 @@ build_common_base() {
 
 case "$ACTION" in
   up)
+    resolve_bind_address
+    export RECON_SERVE_BIND_ADDRESS="$BIND_ADDRESS"
+    echo "Binding VGGT Serve to Tailscale address: http://${BIND_ADDRESS}:${PORT}"
     if [ "$BUILD_ON_UP" -eq 1 ]; then
       build_common_base
     fi

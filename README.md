@@ -10,6 +10,7 @@ This is the easiest way to run the service.
 
 - Docker
 - Docker Compose
+- Tailscale installed, connected, and joined to the same tailnet as the client
 - NVIDIA Container Toolkit if you want GPU inference
 
 ### 1. Clone and initialize the submodule
@@ -43,6 +44,11 @@ The wrapper builds `docker/Dockerfile.common` first, then the selected backend-s
 
 Notes:
 
+- The wrapper detects the server's Tailscale IPv4 address and exposes the service
+  only on that address. It refuses to start if Tailscale is unavailable.
+- `--bind-address 127.0.0.1` is an explicit escape hatch for local-only
+  development. Do not use `0.0.0.0` unless public exposure is intentional and
+  protected separately.
 - The first run can take a while because Docker builds the image.
 - The first model load can also take time because VGGT weights may be downloaded.
 - `--cpu` is supported, but VGGT is intended for GPU use.
@@ -50,8 +56,9 @@ Notes:
 ### 3. Check the server
 
 ```bash
-curl http://127.0.0.1:9000/healthz
-curl http://127.0.0.1:9000/readyz
+SERVER_TAILSCALE_IP="$(tailscale ip -4)"
+curl "http://${SERVER_TAILSCALE_IP}:9000/healthz"
+curl "http://${SERVER_TAILSCALE_IP}:9000/readyz"
 ```
 
 `/readyz` returns `200` when the model is loaded and ready.
@@ -64,7 +71,7 @@ Using the bundled Python client:
 python scripts/client_example.py \
   vggt/examples/kitchen/images/00.png \
   vggt/examples/kitchen/images/01.png \
-  --base-url http://127.0.0.1:9000 \
+  --base-url http://100.x.y.z:9000 \
   --scene-id kitchen-demo \
   --download-dir ./client_outputs
 
@@ -73,7 +80,7 @@ python scripts/client_example.py \
 python scripts/client_example.py \
   /path/to/image_01.png \
   /path/to/image_02.png \
-  --base-url http://127.0.0.1:9000 \
+  --base-url http://100.x.y.z:9000 \
   --depth-conf-threshold 1.0 \
   --download-dir ./client_outputs
 ```
@@ -81,16 +88,17 @@ python scripts/client_example.py \
 Or with `curl`:
 
 ```bash
-curl -X POST http://127.0.0.1:9000/v1/reconstructions \
+curl -X POST http://100.x.y.z:9000/v1/reconstructions \
   -F "scene_id=kitchen-demo" \
   -F "depth_conf_threshold=5.0" \
   -F "images=@vggt/examples/kitchen/images/00.png" \
   -F "images=@vggt/examples/kitchen/images/01.png"
 ```
 
-## Remote Server Usage Over SSH
+## Remote Server Usage Over Tailscale
 
-If the Docker container runs on a remote server, you can still use the client script from your own machine.
+If the Docker container runs on a remote server, install Tailscale on both the
+server and client and join them to the same tailnet.
 
 ### 1. Start the server on the remote machine
 
@@ -100,12 +108,12 @@ On the server:
 scripts/docker_compose.sh up --backend vggt --port 8080 -d
 ```
 
-### 2. Forward the port to your local machine
+### 2. Find the server's Tailscale address
 
-On your local machine:
+On the server:
 
 ```bash
-ssh -L 8080:127.0.0.1:8080 your_user@your_server
+tailscale ip -4
 ```
 
 ### 3. Run the client locally
@@ -116,14 +124,18 @@ On your local machine:
 python scripts/client_example.py \
   /path/to/image_01.png \
   /path/to/image_02.png \
-  --base-url http://127.0.0.1:8080 \
+  --base-url http://100.x.y.z:8080 \
   --download-dir ./client_outputs
 ```
+
+Replace `100.x.y.z` with the address printed on the server. A MagicDNS hostname
+can be used instead when MagicDNS is enabled.
 
 In this setup:
 
 - your images stay on your local machine,
 - inference runs on the remote server,
+- the service is reachable only through the server's Tailscale interface,
 - downloaded artifacts are saved on your local machine.
 
 ## Local Conda Run
@@ -134,7 +146,7 @@ If you do not want Docker, you can run the service directly.
 conda env create -f environment.yml
 conda activate recon-serve-py312
 python scripts/check_env.py
-uvicorn vggt_serve.app:app --host 0.0.0.0 --port 8000
+uvicorn vggt_serve.app:app --host "$(tailscale ip -4)" --port 8000
 ```
 
 ## Main Endpoints
