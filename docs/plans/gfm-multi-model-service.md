@@ -91,59 +91,86 @@ and local remotes must still be audited explicitly.
 
 ```text
 gfm-serve/
-├── gfm_serve/
-│   ├── api/
-│   │   ├── routes.py
-│   │   ├── request_parser.py
-│   │   └── schemas.py
-│   ├── core/
-│   │   ├── inputs.py
-│   │   ├── outputs.py
-│   │   ├── artifacts.py
-│   │   ├── errors.py
-│   │   └── storage.py
-│   ├── backends/
-│   │   ├── base.py
-│   │   ├── registry.py
-│   │   ├── vggt/
+├── packages/
+│   └── gfm-serve-core/
+│       ├── pyproject.toml
+│       ├── src/gfm_serve/
+│       │   ├── api/
+│       │   │   ├── routes.py
+│       │   │   ├── request_parser.py
+│       │   │   └── schemas.py
+│       │   ├── contracts/
+│       │   │   ├── backend.py
+│       │   │   ├── inputs.py
+│       │   │   └── outputs.py
+│       │   ├── runtime/
+│       │   │   ├── registry.py
+│       │   │   └── config.py
+│       │   ├── artifacts.py
+│       │   ├── errors.py
+│       │   ├── storage.py
+│       │   └── app.py
+│       └── tests/
+├── services/
+│   ├── vggt/
+│   │   ├── pyproject.toml
+│   │   ├── src/gfm_backend_vggt/
 │   │   │   ├── backend.py
 │   │   │   ├── config.py
 │   │   │   ├── inputs.py
 │   │   │   └── outputs.py
-│   │   └── depth_anything_3/
-│   │       ├── backend.py
-│   │       ├── config.py
-│   │       ├── inputs.py
-│   │       └── outputs.py
-│   ├── config.py
-│   └── app.py
-├── third_party/
-│   ├── vggt/                  # git submodule
-│   └── depth-anything-3/      # git submodule
+│   │   ├── upstream/          # VGGT git submodule
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── README.md
+│   └── depth-anything-3/
+│       ├── pyproject.toml
+│       ├── src/gfm_backend_depth_anything_3/
+│       │   ├── backend.py
+│       │   ├── config.py
+│       │   ├── inputs.py
+│       │   └── outputs.py
+│       ├── upstream/          # DA3 git submodule
+│       ├── tests/
+│       ├── Dockerfile
+│       └── README.md
 ├── docker/
-│   ├── Dockerfile.common
-│   ├── Dockerfile.vggt
-│   └── Dockerfile.depth-anything-3
+│   └── Dockerfile.common
 ├── docs/
 │   ├── architecture.md
 │   ├── api.md
-│   ├── migration-v1.md
-│   └── models/
-│       ├── vggt.md
-│       └── depth-anything-3.md
+│   └── migration-v1.md
 ├── scripts/
-├── tests/
-│   ├── contract/
-│   ├── backends/
-│   └── api/
 ├── README.md
 └── pyproject.toml
 ```
 
-`third_party/` makes ownership explicit: these directories are pinned upstream
-source trees, not service code. Backend adapters belong under
-`gfm_serve/backends/`; model-specific service documentation belongs under
-`docs/models/`. Do not put adapters inside the submodules.
+This is a vertical-slice layout. Each `services/<model>/` directory owns the
+adapter, configuration, dependency declaration, upstream submodule, tests,
+Dockerfile, and model-specific documentation required to operate that model.
+Adding or removing a model therefore has a local, reviewable change boundary
+instead of scattering changes across `third_party/`, `docker/`, `docs/models/`,
+and the core package.
+
+`packages/gfm-serve-core/` owns only the HTTP transport, stable contracts,
+storage, runtime lifecycle, and artifact vocabulary shared by all model
+services. A service package depends on the core package and exposes its backend
+factory through a Python entry point such as:
+
+```toml
+[project.entry-points."gfm_serve.backends"]
+vggt = "gfm_backend_vggt:create_backend"
+```
+
+The core runtime discovers the one installed backend package at startup. A
+production model image installs `gfm-serve-core` plus exactly one service
+package and its upstream dependency. It must fail startup if zero or multiple
+backend entry points are installed unless an explicit backend selection is
+provided.
+
+The `upstream/` child is a pinned external source tree, not a location for
+service adapter code. Keeping it beside its owner still preserves that
+distinction while making model updates atomic with adapter and image changes.
 
 The DA3 submodule should use the requested upstream
 `git@github.com:ByteDance-Seed/Depth-Anything-3.git` URL if all build hosts have
@@ -327,17 +354,19 @@ The result manifest must record:
 ## 7. Configuration and dependency isolation
 
 - Make root settings genuinely common (`service`, limits, storage, backend).
-- Move `VGGTBackendSettings` and new `DA3BackendSettings` next to their adapters.
-- Load backend settings through a registry/factory, rather than adding every
-  future model's fields to `Settings`.
+- Move `VGGTBackendSettings` and new `DA3BackendSettings` into their respective
+  `services/<model>/src/` packages.
+- Discover backend factories through the `gfm_serve.backends` package entry
+  point group, rather than importing every future model from the core package
+  or adding its fields to root `Settings`.
 - Adopt `GFM_SERVE_BACKEND`, `GFM_SERVE_VGGT_*`, and
   `GFM_SERVE_DEPTH_ANYTHING_3_*`, with temporary aliases as described above.
 - Pin each upstream submodule commit and record the compatible model revision.
-- Keep a common lightweight wheel and install only one upstream model stack in
-  each backend image.
-- Add a real DA3 Docker layer that copies `third_party/depth-anything-3`, installs
-  its pinned requirements, then installs the service. Do not install both VGGT
-  and DA3 in the common image.
+- Build a common lightweight core wheel and install only one service package and
+  upstream model stack in each model image.
+- Let each `services/<model>/Dockerfile` copy its local `upstream/`, install the
+  pinned model requirements, and install its service package plus the common
+  core wheel. Do not install both VGGT and DA3 in the common image.
 - Add backend-specific environment checks/smoke tests; a common check cannot
   prove that CUDA extensions and model imports work for every image.
 
@@ -355,7 +384,7 @@ The root `README.md` should contain only shared information:
 - deployment topology;
 - links to architecture and migration documentation.
 
-Each `docs/models/<model>.md` owns:
+Each `services/<model>/README.md` owns:
 
 - supported upstream versions and model variants;
 - accepted inputs and valid combinations;
@@ -366,8 +395,9 @@ Each `docs/models/<model>.md` owns:
 - a tested request example.
 
 `docs/api.md` owns the transport and common schema. `docs/architecture.md` owns
-extension rules. Avoid copying upstream READMEs; link to upstream and document
-only service integration behavior.
+extension rules, including the required service package entry point. Avoid
+copying upstream READMEs; link to upstream and document only service integration
+behavior.
 
 ## 9. Patch sequence
 
@@ -403,31 +433,38 @@ options, and discovery JSON Schema.
 1. Rename `vggt_serve/` to `gfm_serve/`, imports, distribution metadata,
    entrypoints, container copy paths, environment defaults, log messages, and
    tests.
-2. Move the VGGT submodule from `vggt/` to `third_party/vggt/` with
+2. Extract shared runtime code into `packages/gfm-serve-core/` and package it as
+   `gfm-serve-core`.
+3. Create `services/vggt/`, move the VGGT adapter and configuration into its
+   service package, and register it through the backend entry point.
+4. Move the VGGT submodule from `vggt/` to `services/vggt/upstream/` with
    `.gitmodules` updated, preserving its pinned commit.
-3. Move VGGT adapter files into `gfm_serve/backends/vggt/`.
-4. Split root configuration from backend configuration.
-5. Introduce `GFM_SERVE_*` variables and test legacy aliases.
-6. Update scripts so backend asset checks use registry metadata or an explicit
-   backend-to-source mapping instead of a hard-coded VGGT branch.
+5. Move the VGGT Dockerfile, tests, and model-specific documentation into
+   `services/vggt/`.
+6. Introduce `GFM_SERVE_*` variables and test legacy aliases.
+7. Update scripts to discover service directories and their Dockerfiles instead
+   of maintaining a hard-coded model-to-asset mapping.
 
 Acceptance: no service-owned module or generic UI string is VGGT-named; VGGT
-still builds and serves the compatibility request.
+still builds and serves the compatibility request; the common core can be
+installed and tested without either upstream model.
 
 ### Phase 4 — Integrate Depth Anything 3
 
-1. Add `third_party/depth-anything-3/` at a reviewed, pinned upstream commit.
-2. Implement `DA3BackendSettings`, request options, descriptor, adapter, and
-   output normalization.
+1. Create `services/depth-anything-3/` and add its `upstream/` submodule at a
+   reviewed, pinned DA3 commit.
+2. Implement its independent Python service package with `DA3BackendSettings`,
+   request options, descriptor, adapter, backend entry point, and output
+   normalization.
 3. Pass ordered image paths and optional `(N, 4, 4)` world-to-camera /
    `(N, 3, 3)` intrinsic arrays to `DepthAnything3.inference`.
 4. Normalize DA3's returned `(N, 3, 4)` extrinsics to service `4x4` matrices
    and clearly label whether cameras were predicted, provided, or aligned.
 5. Produce the common versioned depth/confidence artifact and point cloud where
    the necessary geometry is available. Keep DA3-native exports namespaced.
-6. Implement `docker/Dockerfile.depth-anything-3`, compose variables, asset
+6. Implement `services/depth-anything-3/Dockerfile`, compose variables, asset
    checks, and a backend smoke test.
-7. Add `docs/models/depth-anything-3.md`.
+7. Add `services/depth-anything-3/README.md`.
 
 Acceptance: DA3 tests cover images-only inference, pose-conditioned inference,
 partial/invalid camera input, variant-restricted options, output convention
@@ -437,8 +474,8 @@ test.
 ### Phase 5 — Documentation, rename, and release
 
 1. Rewrite root `README.md` as the shared GFM Serve entry point.
-2. Add `docs/models/vggt.md`, `docs/api.md`, `docs/architecture.md`, and
-   `docs/migration-v1.md`.
+2. Complete `services/vggt/README.md`, `docs/api.md`,
+   `docs/architecture.md`, and `docs/migration-v1.md`.
 3. Update examples/client code to generate manifest requests, with a legacy
    example retained in migration docs.
 4. Rename container images, Conda environment, cache/build labels, badges, and
@@ -481,6 +518,9 @@ readiness failures are reported consistently.
 - SSH submodules can break unattended builds without credentials.
 - Moving a submodule and renaming the Python package creates a large diff; do it
   only after contract tests protect behavior.
+- Independently packaged services can drift from the core contract; pin their
+  supported core version and run the shared conformance suite against every
+  service in CI.
 - Installing both frameworks into one environment invites dependency conflicts
   and excessive image size; backend-specific images remain the boundary.
 
@@ -496,14 +536,16 @@ Not included in this migration:
 
 The migration is complete when adding a third GFM requires only:
 
-1. a backend package implementing the common contract;
-2. typed backend input/options/configuration models and a descriptor;
-3. a backend-specific dependency image;
-4. conformance and adapter tests;
-5. one model integration document;
+1. one new `services/<model>/` directory;
+2. an independent backend package implementing the common contract and entry
+   point;
+3. its local pinned `upstream/` submodule;
+4. typed backend input/options/configuration models and a descriptor;
+5. its local Dockerfile, conformance/adapter tests, and README;
 
 and does **not** require adding model-specific form fields, response fields, or
-conditionals to the central API route.
+conditionals to the central API route, editing the core package, or placing
+files in unrelated top-level model directories.
 
 ## 13. References
 
