@@ -59,7 +59,7 @@ in downloadable artifacts.
 `result.json` is schema version `1.0` and records the service version, exact
 backend descriptor, normalized validated request (without binary data),
 coordinate conventions, produced outputs, versioned artifact metadata,
-timings, and warnings. Depth archives contain float32 original-resolution depth
+timings, and warnings. `depth_archive` artifacts contain float32 original-resolution depth
 and confidence arrays. Point clouds use the OpenCV-derived world frame.
 
 Artifacts are retrieved from

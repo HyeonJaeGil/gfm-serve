@@ -288,7 +288,7 @@ class DA3Backend(ReconstructionBackend):
             ArtifactDescriptor(
                 name=depth_path.name,
                 path=depth_path,
-                kind="depth",
+                kind="depth_archive",
                 content_type="application/octet-stream",
                 size_bytes=depth_path.stat().st_size,
                 metadata={

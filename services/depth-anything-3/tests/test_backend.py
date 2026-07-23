@@ -140,7 +140,7 @@ def test_pose_conditioned_stub_execution_forwards_ordered_arrays(tmp_path: Path,
     assert calls[0]["align_to_input_ext_scale"] is False
     assert [view.view_id for view in result.view_results] == ["view-0", "view-1"]
     assert all(view.camera.source == "aligned" for view in result.view_results)
-    assert {artifact.kind for artifact in result.artifacts} == {"depth", "point_cloud"}
+    assert {artifact.kind for artifact in result.artifacts} == {"depth_archive", "point_cloud"}
 
 
 def test_settings_report_variant_capabilities(monkeypatch) -> None:
