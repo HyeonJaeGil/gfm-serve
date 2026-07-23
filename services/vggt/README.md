@@ -30,8 +30,9 @@ python scripts/client_example.py \
 
 For application code, install `packages/gfm-serve-client` and use
 `VGGTClient`. It exposes image inputs, typed VGGT options, result models, and
-artifact downloads, and detects a URL connected to the wrong backend. See
-`packages/gfm-serve-client/README.md` and `examples/vggt_client.py`.
+artifact downloads. See the
+[Python SDK guide](../../packages/gfm-serve-client/README.md) and
+[VGGT example](../../examples/vggt_client.py).
 
 CUDA is strongly recommended. The image smoke check imports the pinned upstream
 stack; numerical GPU integration remains opt-in.

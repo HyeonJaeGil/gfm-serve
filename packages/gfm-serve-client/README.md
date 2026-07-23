@@ -1,12 +1,8 @@
 # GFM Serve Python client
 
-`gfm-serve-client` is the application-facing Python SDK for both GFM Serve
-backends. It builds multipart manifests, validates inputs before upload, parses
-typed responses, and downloads result artifacts.
-
-For raw `curl` and low-level HTTP examples, see
-[`docs/clients.md`](../../docs/clients.md). This document is the reference for
-the installable Python package.
+Use this package to call VGGT or Depth Anything 3 from Python. It validates
+inputs, uploads images, returns typed results, and downloads artifacts. For
+`curl` and other languages, use the [HTTP API](../../docs/api.md).
 
 ## Install
 
@@ -16,13 +12,8 @@ From this repository:
 python -m pip install -e packages/gfm-serve-client
 ```
 
-The client is independent of PyTorch, VGGT, DA3, and the server runtime. An
-application only needs `httpx`, `numpy`, and `pydantic`.
-
-Each server process owns one backend. Connect `VGGTClient` to a VGGT service
-and `DepthAnything3Client` to a DA3 service. Backend-specific clients raise
-`BackendMismatchError` if discovery shows that the URL points to the wrong
-service.
+The SDK does not install PyTorch or either model. Start the selected service
+first, then connect its client to the service URL.
 
 ## VGGT
 
@@ -62,7 +53,7 @@ Image-only inference:
 ```python
 from gfm_serve_client import DepthAnything3Client, DepthAnything3Options
 
-with DepthAnything3Client("http://127.0.0.1:9001") as client:
+with DepthAnything3Client("http://127.0.0.1:9000") as client:
     result = client.reconstruct(
         ["frames/000.png", "frames/001.png"],
         options=DepthAnything3Options(
@@ -100,7 +91,7 @@ cameras = [
     for K, c2w in zip(intrinsics, camera_to_world, strict=True)
 ]
 
-with DepthAnything3Client("http://127.0.0.1:9001") as client:
+with DepthAnything3Client("http://127.0.0.1:9000") as client:
     result = client.reconstruct(
         ["frames/000.png", "frames/001.png"],
         cameras=cameras,
@@ -123,10 +114,10 @@ every image; mono and metric-only DA3 checkpoints do not accept cameras.
 
 ## Results and artifacts
 
-`reconstruct()` returns a `ReconstructionResult`, not a raw dictionary. Useful
-fields include `request_id`, `model`, `timings_ms`, `warnings`, `view_results`,
-`artifacts`, and `produced_outputs`. A returned camera's `source` is
-`predicted`, `provided`, or `aligned`.
+`reconstruct()` returns a `ReconstructionResult`. Useful fields include
+`request_id`, `model`, `timings_ms`, `warnings`, `view_results`, `artifacts`,
+and `produced_outputs`. A returned camera's `source` is `predicted`, `provided`,
+or `aligned`.
 
 Select and download artifacts:
 

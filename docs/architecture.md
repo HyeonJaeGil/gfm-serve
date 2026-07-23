@@ -13,6 +13,18 @@ The core discovers factories from the `gfm_serve.backends` entry-point group.
 A production image installs the core and exactly one service package. It never
 imports every supported framework, and a request cannot swap the loaded model.
 
+## Python namespaces
+
+- `gfm_serve` is the current core API.
+- `gfm_backend_vggt` and `gfm_backend_depth_anything_3` are model adapters.
+- `vggt_serve` only forwards imports from releases before `0.2`. It is
+  deprecated and scheduled for removal after 2026-12-31. New code must not
+  import it.
+
+The compatibility namespace remains inside `gfm-serve-core` so existing
+deployments can upgrade without an immediate import failure. See the
+[migration guide](migration-v1.md).
+
 ## Adding a backend
 
 A new `services/<model>/` directory owns:

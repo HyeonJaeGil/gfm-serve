@@ -9,39 +9,31 @@
 
 ## Create a reconstruction
 
-`POST /v1/reconstructions` accepts multipart form data. The preferred transport
-has one JSON `manifest` field and uniquely named image parts:
-
-```json
-{
-  "scene_id": "office",
-  "views": [
-    {
-      "view_id": "cam-000",
-      "upload_key": "image_000",
-      "camera": {
-        "convention": "opencv",
-        "world_to_camera": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
-        "intrinsics": [[800, 0, 640], [0, 800, 360], [0, 0, 1]]
-      }
-    },
-    {"view_id": "cam-001", "upload_key": "image_001"}
-  ],
-  "options": {"ref_view_strategy": "middle"}
-}
-```
+`POST /v1/reconstructions` accepts multipart form data with one JSON `manifest`
+field and one file field per image.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/reconstructions \
-  -F 'manifest={"views":[{"view_id":"a","upload_key":"image_000"}],"options":{}}' \
-  -F image_000=@image.png
+curl -X POST http://127.0.0.1:9000/v1/reconstructions \
+  -F 'manifest={
+    "scene_id":"office",
+    "views":[
+      {"view_id":"left","upload_key":"image_000"},
+      {"view_id":"right","upload_key":"image_001"}
+    ],
+    "options":{}
+  }' \
+  -F image_000=@frames/000.png \
+  -F image_001=@frames/001.png
 ```
 
-For a pose-conditioned Depth Anything 3 request, every view must contain both
-camera matrices:
+This image-only request works with both VGGT and DA3.
+
+### DA3 with known cameras
+
+Add a camera to every view and pass both matrices:
 
 ```bash
-curl -X POST http://127.0.0.1:9001/v1/reconstructions \
+curl -X POST http://127.0.0.1:9000/v1/reconstructions \
   -F 'manifest={
     "scene_id":"office",
     "views":[
@@ -95,14 +87,14 @@ File order is irrelevant; `upload_key` determines view order. View IDs and
 upload keys must be unique. Extra, missing, duplicated, mixed legacy/manifest,
 non-image, empty, corrupt, and oversized file parts are rejected.
 
-The HTTP convention is OpenCV. Extrinsics are finite homogeneous 4×4
-world-to-camera matrices. Intrinsics are finite pixel-space 3×3 matrices for
-the original upload dimensions. A backend may reject otherwise valid common
-camera data when its checkpoint does not support pose conditioning.
+Camera rules:
 
-Legacy v1 requests repeat the `images` field and may use `scene_id`,
-`backend_options`, and VGGT-only `depth_conf_threshold`. The threshold response
-contains `Deprecation: true` and a warning.
+- use OpenCV coordinates;
+- provide finite homogeneous `4×4` world-to-camera extrinsics;
+- provide pixel-space `3×3` intrinsics for the original uploaded image size;
+- provide both matrices for every view;
+- use a DA3 checkpoint that supports pose input. VGGT, DA3 mono, and DA3
+  metric-only variants reject supplied cameras.
 
 ## Results and artifacts
 
@@ -110,32 +102,14 @@ Per-view results are keyed by stable `view_id`. Camera matrices are optional and
 carry a `source` of `predicted`, `provided`, or `aligned`. Large arrays remain
 in downloadable artifacts.
 
-`result.json` is schema version `1.0` and records the service version, exact
-backend descriptor, normalized validated request (without binary data),
-coordinate conventions, produced outputs, versioned artifact metadata,
-timings, and warnings. `depth_archive` artifacts contain float32 original-resolution depth
-and confidence arrays. Point clouds use the OpenCV-derived world frame.
+`result.json` records the validated request, selected model, outputs, artifacts,
+timings, and warnings. `depth_archive` artifacts contain float32
+original-resolution depth and confidence arrays. Point clouds use the
+OpenCV-derived world frame.
 
 Artifacts are retrieved from
 `GET /v1/artifacts/{request_id}/{name}` and are confined to the request run
 directory.
 
-## Python SDK
-
-Application code does not need to construct multipart requests directly.
-Install the typed client from `packages/gfm-serve-client` and use the
-backend-specific wrapper:
-
-```python
-from gfm_serve_client import DepthAnything3Client
-
-with DepthAnything3Client("http://127.0.0.1:9001") as client:
-    result = client.reconstruct(["000.png", "001.png"])
-    depths = client.load_depth_archive(result)
-```
-
-Use `VGGTClient` for a VGGT service. The SDK covers discovery, readiness,
-request validation, NumPy camera matrices, structured errors, typed results,
-and streaming artifact downloads. Its complete API and pose-conditioned DA3
-example are documented in
-[`packages/gfm-serve-client/README.md`](../packages/gfm-serve-client/README.md).
+Python applications can avoid multipart handling by using the
+[Python SDK](../packages/gfm-serve-client/README.md).

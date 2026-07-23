@@ -18,10 +18,6 @@ scripts/docker_compose.sh up --backend vggt --port 9000 --bind-address 127.0.0.1
 scripts/docker_compose.sh up --backend depth-anything-3 --port 9000 --bind-address 127.0.0.1
 ```
 
-The wrapper builds the lightweight `docker/Dockerfile.common`, followed by the
-selected `services/<backend>/Dockerfile`. Each production image installs only
-the selected upstream model stack.
-
 Inspect the active checkpoint and its variant-dependent capabilities:
 
 ```bash
@@ -29,7 +25,7 @@ curl http://127.0.0.1:9000/readyz
 curl http://127.0.0.1:9000/v1/models/current
 ```
 
-Send a manifest request and download its artifacts:
+Install the Python SDK and run an example:
 
 ```bash
 python -m pip install -e packages/gfm-serve-client
@@ -41,27 +37,9 @@ python examples/vggt_client.py \
 ```
 
 Applications should use the typed
-[Python client](packages/gfm-serve-client/README.md):
-
-```python
-from gfm_serve_client import VGGTClient
-
-with VGGTClient("http://127.0.0.1:9000") as client:
-    result = client.reconstruct(["00.png", "01.png"])
-    client.download_artifacts(result, "./outputs")
-```
-
-`VGGTClient` and `DepthAnything3Client` validate that they are connected to the
-expected backend. DA3 additionally accepts typed NumPy camera calibration via
-`CameraParameters`. Complete examples are in
-[`examples/vggt_client.py`](examples/vggt_client.py) and
-[`examples/depth_anything_3_client.py`](examples/depth_anything_3_client.py).
-
-The low-level HTTP example remains in `scripts/client_example.py`, including
-the legacy repeated `images` transport. See [docs/api.md](docs/api.md) for the
-wire contract, [docs/clients.md](docs/clients.md) for a comparison of every
-client interface, and [docs/migration-v1.md](docs/migration-v1.md) for
-compatibility dates.
+[Python client](packages/gfm-serve-client/README.md). DA3 camera input and
+artifact handling are covered there. For `curl`, other languages, and all
+available examples, see [Choose a client](docs/clients.md).
 
 ## Development
 

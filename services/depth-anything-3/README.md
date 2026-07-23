@@ -51,8 +51,9 @@ For application code, use `DepthAnything3Client` from
 `packages/gfm-serve-client`. `CameraParameters.from_matrices()` accepts NumPy
 world-to-camera matrices, while `CameraParameters.from_camera_to_world()`
 performs pose inversion. Camera counts, shapes, finite values, and homogeneous
-rows are checked before upload. See `packages/gfm-serve-client/README.md` and
-the runnable `examples/depth_anything_3_client.py`.
+rows are checked before upload. See the
+[Python SDK guide](../../packages/gfm-serve-client/README.md) and
+[DA3 example](../../examples/depth_anything_3_client.py).
 
 ## Opt-in GPU smoke
 
