@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["packages/gfm-serve-core/src"]
-include = ["gfm_serve*"]
+include = ["gfm_serve*", "vggt_serve*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "services/vggt/tests", "services/depth-anything-3/tests"]

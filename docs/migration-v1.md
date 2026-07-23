@@ -1,11 +1,12 @@
 # v1 migration to GFM Serve
 
-The distribution and core import changed from `vggt-serve` / `vggt_serve` to
-`gfm-serve` / `gfm_serve`. The service name and container prefix are now
-`gfm-serve`.
+The distribution and preferred core import changed from `vggt-serve` /
+`vggt_serve` to `gfm-serve` / `gfm_serve`. The service name and container
+prefix are now `gfm-serve`. The `vggt_serve` namespace forwards historical
+imports and emits `DeprecationWarning`.
 
 The reconstruction path remains `POST /v1/reconstructions`. Repeated `images`
-fields, `RECON_SERVE_*`, and `VGGT_SERVE_*` environment names are supported
+fields, `vggt_serve` imports, `RECON_SERVE_*`, and `VGGT_SERVE_*` environment names are supported
 through **2026-12-31**. They are scheduled for removal in the next major API
 release after that date. New deployments should use manifest requests and
 `GFM_SERVE_*`.
