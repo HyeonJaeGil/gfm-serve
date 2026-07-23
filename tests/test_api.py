@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from vggt_serve.app import create_app
 from vggt_serve.backends import BackendRunRequest, BackendRunResult, EmptyBackendOptions, ReconstructionBackend
 from vggt_serve.config import Settings
+from vggt_serve.contracts import CameraResult, ImageSize, ViewResult
 from vggt_serve.errors import ServiceBusyApiError, ServiceUnavailableApiError
 from vggt_serve.storage import ArtifactDescriptor, PreparedImage, write_depth_artifact, write_point_cloud_ply
 
@@ -119,20 +120,25 @@ class StubBackend(ReconstructionBackend):
                 )
             )
 
-        camera_results = []
+        view_results = []
         if "camera_poses" in self.capabilities:
-            camera_results = [
-                {
-                    "filename": image.original_filename,
-                    "original_size": {"width": image.width, "height": image.height},
-                    "cam_from_world": np.eye(4, dtype=np.float32).tolist(),
-                    "intrinsics": np.eye(3, dtype=np.float32).tolist(),
-                }
-                for image in request.images
+            view_results = [
+                ViewResult(
+                    view_id=view.view_id,
+                    filename=view.image.original_filename,
+                    original_size=ImageSize(width=view.image.width, height=view.image.height),
+                    camera=CameraResult(
+                        convention="opencv",
+                        world_to_camera=np.eye(4, dtype=np.float32).tolist(),
+                        intrinsics=np.eye(3, dtype=np.float32).tolist(),
+                        source="predicted",
+                    ),
+                )
+                for view in request.views
             ]
 
         return BackendRunResult(
-            camera_results=camera_results,
+            view_results=view_results,
             artifacts=artifacts,
             produced_outputs=list(self.capabilities),
             timings_ms={"inference": 5, "postprocess": 2, "total": 7},

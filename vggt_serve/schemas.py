@@ -4,10 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
-class ImageSize(BaseModel):
-    width: int
-    height: int
+from .contracts import CameraResult, ImageSize, ViewResult
 
 
 class InputSummary(BaseModel):
@@ -22,13 +19,6 @@ class TimingStats(BaseModel):
     inference: int = 0
     postprocess: int = 0
     total: int = 0
-
-
-class CameraResult(BaseModel):
-    filename: str
-    original_size: ImageSize
-    cam_from_world: list[list[float]]
-    intrinsics: list[list[float]]
 
 
 class ArtifactInfo(BaseModel):
@@ -51,7 +41,8 @@ class ReconstructionResponse(BaseModel):
     status: Literal["succeeded", "failed"]
     input_summary: InputSummary | None = None
     timings_ms: TimingStats
-    camera_results: list[CameraResult] = Field(default_factory=list)
+    view_results: list[ViewResult] = Field(default_factory=list)
+    camera_results: list[ViewResult] = Field(default_factory=list)
     artifacts: list[ArtifactInfo] = Field(default_factory=list)
     produced_outputs: list[str] = Field(default_factory=list)
     error: ErrorInfo | None = None

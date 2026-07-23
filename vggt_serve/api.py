@@ -13,7 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ValidationError
 
-from .backends import BackendRunRequest, BackendRunResult, ReconstructionBackend
+from .backends import BackendRunRequest, BackendRunResult, PreparedView, ReconstructionBackend
+from .contracts import SceneInput, ViewInput, ViewResult
 from .config import Settings
 from .errors import (
     ApiError,
@@ -25,7 +26,6 @@ from .errors import (
 )
 from .schemas import (
     ArtifactInfo,
-    CameraResult,
     ErrorInfo,
     HealthResponse,
     InputSummary,
@@ -141,7 +141,7 @@ def _build_response(
     status_value: str,
     input_summary: InputSummary | None,
     timings_ms: TimingStats,
-    camera_results: list[dict] | None = None,
+    view_results: list[ViewResult] | None = None,
     artifacts: list[ArtifactInfo] | None = None,
     produced_outputs: list[str] | None = None,
     error: ErrorInfo | None = None,
@@ -153,7 +153,8 @@ def _build_response(
         status=status_value,  # type: ignore[arg-type]
         input_summary=input_summary,
         timings_ms=timings_ms,
-        camera_results=[CameraResult.model_validate(item) for item in (camera_results or [])],
+        view_results=view_results or [],
+        camera_results=view_results or [],
         artifacts=artifacts or [],
         produced_outputs=produced_outputs or [],
         error=error,
@@ -282,6 +283,17 @@ async def create_reconstruction(
             filenames=[image.original_filename for image in prepared_images],
             total_bytes=total_bytes,
         )
+        scene = SceneInput(
+            scene_id=scene_id,
+            views=[
+                ViewInput(view_id=f"view-{index:03d}", upload_key=f"images-{index:03d}")
+                for index, _ in enumerate(prepared_images)
+            ],
+        )
+        prepared_views = [
+            PreparedView(view_id=view.view_id, upload_key=view.upload_key, image=image)
+            for view, image in zip(scene.views, prepared_images, strict=True)
+        ]
 
         request_payload["files"] = [
             {
@@ -301,7 +313,8 @@ async def create_reconstruction(
             BackendRunRequest(
                 request_id=request_id,
                 run_dir=run_dir,
-                images=prepared_images,
+                scene=scene,
+                views=prepared_views,
                 backend_options=validated_backend_options,
             )
         )
@@ -331,7 +344,7 @@ async def create_reconstruction(
                 postprocess=result.timings_ms["postprocess"],
                 total=int((perf_counter() - start) * 1000),
             ),
-            camera_results=result.camera_results,
+            view_results=result.view_results,
             artifacts=artifacts,
             produced_outputs=result.produced_outputs,
         )

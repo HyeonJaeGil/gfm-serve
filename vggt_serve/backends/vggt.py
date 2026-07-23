@@ -9,6 +9,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import Settings
+from ..contracts import CameraResult, ImageSize, ViewResult
 from ..errors import ServiceBusyApiError, ServiceUnavailableApiError
 from ..storage import (
     ArtifactDescriptor,
@@ -181,7 +182,7 @@ class VGGTBackend(ReconstructionBackend):
         depth_conf_np = depth_conf.squeeze(0).detach().to(self._torch.float32).cpu().numpy().astype(np.float32)
 
         postprocess_start = perf_counter()
-        camera_results: list[dict[str, object]] = []
+        view_results: list[ViewResult] = []
         original_depth_maps: list[np.ndarray] = []
         original_depth_confidences: list[np.ndarray] = []
         all_points: list[np.ndarray] = []
@@ -222,13 +223,18 @@ class VGGTBackend(ReconstructionBackend):
 
             original_depth_maps.append(depth_original)
             original_depth_confidences.append(depth_conf_original)
-            camera_results.append(
-                {
-                    "filename": image.original_filename,
-                    "original_size": {"width": image.width, "height": image.height},
-                    "cam_from_world": cam_from_world.tolist(),
-                    "intrinsics": intrinsic_original.tolist(),
-                }
+            view_results.append(
+                ViewResult(
+                    view_id=request.views[index].view_id,
+                    filename=image.original_filename,
+                    original_size=ImageSize(width=image.width, height=image.height),
+                    camera=CameraResult(
+                        convention="opencv",
+                        world_to_camera=cam_from_world.tolist(),
+                        intrinsics=intrinsic_original.tolist(),
+                        source="predicted",
+                    ),
+                )
             )
 
         if all_points:
@@ -291,7 +297,7 @@ class VGGTBackend(ReconstructionBackend):
         )
 
         return BackendRunResult(
-            camera_results=camera_results,
+            view_results=view_results,
             artifacts=artifacts,
             produced_outputs=list(self.capabilities),
             timings_ms={

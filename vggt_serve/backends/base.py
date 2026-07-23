@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
+from ..contracts import BackendDescriptor, SceneInput, ViewResult
 from ..storage import ArtifactDescriptor, PreparedImage
 
 
@@ -15,16 +16,28 @@ class EmptyBackendOptions(BaseModel):
 
 
 @dataclass(slots=True)
+class PreparedView:
+    view_id: str
+    upload_key: str
+    image: PreparedImage
+
+
+@dataclass(slots=True)
 class BackendRunRequest:
     request_id: str
     run_dir: Path
-    images: list[PreparedImage]
+    scene: SceneInput
+    views: list[PreparedView]
     backend_options: BaseModel
+
+    @property
+    def images(self) -> list[PreparedImage]:
+        return [view.image for view in self.views]
 
 
 @dataclass(slots=True)
 class BackendRunResult:
-    camera_results: list[dict[str, Any]]
+    view_results: list[ViewResult]
     artifacts: list[ArtifactDescriptor]
     produced_outputs: list[str]
     timings_ms: dict[str, int]
@@ -36,8 +49,23 @@ class ReconstructionBackend(ABC):
     capabilities: ClassVar[tuple[str, ...]] = ()
     options_model: ClassVar[type[BaseModel]] = EmptyBackendOptions
 
+    @property
+    def descriptor(self) -> BackendDescriptor:
+        return BackendDescriptor(
+            backend=self.backend_id,
+            model_id=self.display_name,
+            inputs={"images": {"required": True}},
+            outputs=list(self.capabilities),
+            options_schema=self.options_model.model_json_schema(),
+        )
+
     def validate_options(self, payload: dict[str, Any] | None) -> BaseModel:
         return self.options_model.model_validate(payload or {})
+
+    def validate_request(self, scene: SceneInput, options: dict[str, Any] | None) -> BaseModel:
+        if any(view.camera is not None for view in scene.views):
+            raise ValueError(f"Backend '{self.backend_id}' does not support camera inputs.")
+        return self.validate_options(options)
 
     @property
     @abstractmethod

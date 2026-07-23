@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base import BackendRunRequest, BackendRunResult, EmptyBackendOptions, ReconstructionBackend
+from .base import BackendRunRequest, BackendRunResult, EmptyBackendOptions, PreparedView, ReconstructionBackend
 from .registry import create_backend, list_backends, register_backend
 from .vggt import VGGTBackend, VGGTBackendOptions
 
@@ -11,6 +11,7 @@ __all__ = [
     "BackendRunRequest",
     "BackendRunResult",
     "EmptyBackendOptions",
+    "PreparedView",
     "ReconstructionBackend",
     "VGGTBackend",
     "VGGTBackendOptions",
